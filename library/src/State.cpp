@@ -13,7 +13,7 @@ namespace Lua {
 		/**
 		 * @brief Helper class for loading from C++ stream.
 		*/
-		class ReadHelper {
+		class StreamReadHelper {
 			protected:
 				std::istream& stream;       ///< Source stream.
 				int n = 0;                  ///< Number of pre-read characters.
@@ -28,7 +28,7 @@ namespace Lua {
 
 					};
 			public:
-				ReadHelper(std::istream& s): stream(s) { prepare(); }; ///< Main constructor
+				StreamReadHelper(std::istream& s): stream(s) { prepare(); }; ///< Main constructor
 				/**
 				 * @brief Read data from stream in %Lua style.
 				**/
@@ -43,7 +43,35 @@ namespace Lua {
 				 * @brief Forward raw call to C++ object.
 				*/
 				static const char* luaReadStatic([[maybe_unused]] lua_State *L, void *ud, size_t *size) {
-					return static_cast<ReadHelper*>(ud)->luaRead(size);
+					return static_cast<StreamReadHelper*>(ud)->luaRead(size);
+					};
+			};
+
+		/**
+		 * @brief Helper class for loading from C++ string.
+		*/
+		class StringReadHelper {
+			protected:
+				std::string_view str; ///< Source stream.
+				bool read = false;    ///< Was string read.
+
+			public:
+				StringReadHelper(std::string_view s): str(s) {}; ///< Main constructor
+				/**
+				 * @brief Read data from string in %Lua style.
+				**/
+				const char* luaRead(size_t *size) {
+					if (read) return nullptr;
+
+					read = true;
+					*size = str.length();
+					return str.data();
+					};
+				/**
+				 * @brief Forward raw call to C++ object.
+				*/
+				static const char* luaReadStatic([[maybe_unused]] lua_State *L, void *ud, size_t *size) {
+					return static_cast<StringReadHelper*>(ud)->luaRead(size);
 					};
 			};
 
@@ -184,9 +212,9 @@ namespace Lua {
 				}
 		};
 
-	void State::load(std::istream& istr, const std::string& name, LoadMode mode) {
-		auto reader = ReadHelper(istr);
-		auto res = lua_load(state, ReadHelper::luaReadStatic, &reader, name.c_str(), luaLoadModes.at(mode));
+	template<typename T>
+	void State::loadInternal(T& reader, const std::string& name, LoadMode mode) {
+		auto res = lua_load(state, T::luaReadStatic, &reader, name.c_str(), luaLoadModes.at(mode));
 
 		if (res == LUA_OK) {
 				return; // Successful load
@@ -199,6 +227,16 @@ namespace Lua {
 				throw std::bad_alloc();
 				}
 		else std::abort(); // I hope you have your towel ready, things are going really messy around there…
+		};
+
+	void State::load(std::istream& istr, const std::string& name, LoadMode mode) {
+		StreamReadHelper reader(istr);
+		loadInternal(reader, name, mode);
+		};
+
+	void State::load(const std::string& str, LoadMode mode) {
+		StringReadHelper reader(str);
+		loadInternal(reader, str, mode);
 		};
 
 	void State::loadFile(const std::string& filename, LoadMode mode) {

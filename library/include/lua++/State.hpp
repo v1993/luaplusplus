@@ -60,14 +60,36 @@ namespace Lua {
 	 * This is a central class of lua++ library. It is C++ wrapper around `lua_State*`.
 	 * Most functional of this library relies on fact that they are used in %Lua state
 	 * managed by this class.
+	 *
+	 * @todo Override functions for loading to give control over binary chunks.
+	 * That is:
+	 * 1. `load`
+	 * 2. `loadfile`
+	 * 3. `dofile`
+	 * @todo Implement control over `package` library.
 	*/
 	class State {
 			friend class StatePtr;
+		private:
+			/**
+			 * @brief Internally used function for loading %Lua code.
+			 *
+			 * @param reader Reader object. Must implement static `luaReadStatic` method which
+			 * have signature `const char*(lua_State, void*, size_t*)` and follow %Lua
+			 * rules for reader function. Second argument (`void*`) will be object you passed.
+			 * @param name Chunk name to be passed to %Lua directly.
+			 * @param mode Loading mode. Required because function is intended for internal usage only.
+			 *
+			 * @throw Lua::SyntaxError %Lua parser failed to load chunk (`LUA_ERRSYNTAX`).
+			 * @throw std::bad_alloc Call resulted in `LUA_ERRMEM`.
+			*/
+			template<typename T>
+			void loadInternal(T& reader, const std::string& name, LoadMode mode);
 		protected:
 			lua_State* state = nullptr; ///< lua_State being currently managed (coroutine-specific).
 			lua_State* mainState = nullptr; ///< main lua_State.
 			std::unordered_map<std::type_index, std::shared_ptr<TypeBase>> knownTypes; ///< Map of C++ types to their handlers.
-			std::vector<std::shared_ptr<TypeBase>> knownTypesList; ///< List of allregistered handlers.
+			std::vector<std::shared_ptr<TypeBase>> knownTypesList; ///< List of all registered handlers.
 
 			State** luaStatePtr = nullptr; ///< Location of pointer to this State to be used by getFromLuaState.
 
@@ -204,6 +226,21 @@ namespace Lua {
 			 * @throw std::bad_alloc Call resulted in `LUA_ERRMEM`.
 			*/
 			void load(std::istream& istr, const std::string& name = "Lua::State::load", LoadMode mode = LoadMode::TEXT);
+			/**
+			 * @brief Load %Lua code from string.
+			 *
+			 * @note This function doesn't intrenally do any copy operations,
+			 * so it is far more efficient on large strings (but not streams!)
+			 * than `std::stringstream`.
+			 *
+			 * @param str String to be compiled.
+			 * @param mode Optionally, mode can be set. By default, only text chunks are
+			 * allowed for security reasons.
+			 *
+			 * @throw Lua::SyntaxError %Lua parser failed to load chunk (`LUA_ERRSYNTAX`).
+			 * @throw std::bad_alloc Call resulted in `LUA_ERRMEM`.
+			*/
+			void load(const std::string& str, LoadMode mode = LoadMode::TEXT);
 			/**
 			 * @brief Simple wrapper around State::load to load files.
 			 *

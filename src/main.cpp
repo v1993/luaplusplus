@@ -3,6 +3,7 @@
 #include <string>
 #include "lua++/State.hpp"
 #include "lua++/Error.hpp"
+#include <assert.h>
 
 using namespace std::string_literals; // for `s`
 using namespace Lua::NumberLiterals;  // for _ln and _li
@@ -10,7 +11,7 @@ using namespace Lua::NumberLiterals;  // for _ln and _li
 #define printtype(T) std::cout << typeid(T).name() << std::endl
 
 int main() {
-	Lua::State state;
+	Lua::State state(Lua::DefaultLibsPreset::SAFE_WITH_PACKAGE);
 	//Lua::State stateA = state;
 	std::cout << "Hi" << std::endl;
 
@@ -152,16 +153,16 @@ int main() {
 		auto runStream = [&L](std::istream & stream, const std::string & name) {
 			try {
 					L.load(stream, name);
-					L.pcall(0);
+					L.pcall(0, 0);
 					}
 			catch (const Lua::SyntaxError& err) {
-					std::cout << "We got a syntax error: " << err.what() << std::endl;
+					std::cout << "We got a syntax error in " << name << ": " << err.what() << std::endl;
 					}
 			catch (const Lua::StateError& err) {
-					std::cout << "We got a runtime error: " << err.what() << std::endl;
+					std::cout << "We got a runtime error in " << name << ": " << err.what() << std::endl;
 					}
 			catch (const std::exception& err) {
-					std::cout << "We got a non-lua error (somehow): " << err.what() << std::endl;
+					std::cout << "We got a non-lua error (somehow) in " << name << ": " << err.what() << std::endl;
 					}
 			};
 
@@ -174,19 +175,25 @@ int main() {
 		runFile("syntax_error.lua");
 		runFile("i_do_not_exsist.lua");
 			{
+			// Test loading of long chunks
 			std::stringstream sstr;
 			sstr << "local str = [[";
 
-			for (size_t i = 0; i < BUFSIZ; ++i) {
+			for (size_t i = 0; i < BUFSIZ*4; ++i) {
 					sstr << "A";
 					}
 
 			sstr << "]]" << std::endl
-				 << "print([[Pain scream lenght:]], #str)";
+				 << "print([[Scream lenght: ]], #str)";
 
 			runStream(sstr, "std::stringstream");
 			}
 		//runStream(std::cin, "@stdin"); // To run user input. It works!
+		L.load(
+			R"LUA(print([[I can insert Lua code into C++ like this! // Even with comments!
+Isn't it awesome? ♥]]))LUA"
+		);
+		L.pcall(0, 0);
 		}
 
 	return EXIT_SUCCESS;

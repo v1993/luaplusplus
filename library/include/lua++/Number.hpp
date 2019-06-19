@@ -33,6 +33,11 @@ namespace Lua {
 			 */
 			Number(lua_Number  num): holder(num) {};
 			/**
+			 * @brief Constructor from lua_Integer (for integers).
+			 * @param num Integer number to be stored.
+			 */
+			Number(lua_Integer num): holder(num) {};
+			/**
 			 * @brief Copy constructor.
 			 * @param old Value being copied.
 			 */
