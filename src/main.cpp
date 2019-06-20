@@ -2,13 +2,31 @@
 #include <fstream>
 #include <string>
 #include "lua++/State.hpp"
+#include "lua++/TypeHelper.hpp"
 #include "lua++/Error.hpp"
 #include <assert.h>
 
-using namespace std::string_literals; // for `s`
+using namespace std::string_literals; // for s
 using namespace Lua::NumberLiterals;  // for _ln and _li
 
 #define printtype(T) std::cout << typeid(T).name() << std::endl
+
+class MyTestClass {
+	public:
+		~MyTestClass() { std::cout << "Nap time" << std::endl; };
+		static const std::unordered_map<std::string, std::string> metamethods;
+		static const std::unordered_map<std::string, std::function<int(MyTestClass*, Lua::StatePtr&)>> methods;
+		
+		int TestMethod(Lua::StatePtr& Lp) { std::cout << "I'm flying!" << std::endl; return 0; };
+		int __index(Lua::StatePtr& Lp) { Lp->push("Unknown index"); return 1; };
+};
+
+const std::unordered_map<std::string, std::string> MyTestClass::metamethods = {
+};
+
+const std::unordered_map<std::string, std::function<int(MyTestClass*, Lua::StatePtr&)>> MyTestClass::methods = {
+	{"TestMethod", std::bind(&MyTestClass::TestMethod, std::placeholders::_1, std::placeholders::_2)}
+};
 
 int main() {
 	Lua::State state(Lua::DefaultLibsPreset::SAFE_WITH_PACKAGE);
@@ -195,6 +213,21 @@ Isn't it awesome? ♥]]))LUA"
 		);
 		L.pcall(0, 0);
 		}
+	
+	{
+		L.registerType(std::make_shared<Lua::TypeHelper<MyTestClass>>());
+		auto testObj = std::make_shared<MyTestClass>();
+		L.load(
+			R"LUA(
+local testObj = ({...})[1]
+print(testObj)
+print(testObj.TestMethod)
+testObj:TestMethod()
+		)LUA"
+		);
+		L.push(testObj);
+		L.pcall(1, 0);
+	}
 
 	return EXIT_SUCCESS;
 	}

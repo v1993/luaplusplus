@@ -1,5 +1,6 @@
 #include "lua++/State.hpp"
 #include "lua++/Error.hpp"
+#include "lua++/CppFunction.hpp"
 
 #include <iostream>
 #include <fstream>
@@ -267,18 +268,20 @@ namespace Lua {
 
 		knownTypes[type] = ptr;
 		knownTypesList.push_back(ptr);
+		ptr->init(*this);
 		return true;
 		};
 
 	void State::registerStandardTypes() {
 		// Same object is used for every instance
-		static const std::array<std::shared_ptr<TypeBase>, 6> dtypes = {
+		static const std::array<std::shared_ptr<TypeBase>, 7> dtypes = {
 			std::make_shared<Lua::TypeBool>(),
 			std::make_shared<Lua::TypeString>(),
 			std::make_shared<Lua::TypeCString>(),
 			std::make_shared<Lua::TypeNumber>(),
 			std::make_shared<Lua::TypeNull>(),
-			std::make_shared<Lua::TypeLightUserdata>()
+			std::make_shared<Lua::TypeLightUserdata>(),
+			std::make_shared<Lua::TypeCppFunction>()
 			};
 
 		for (const auto& elem : dtypes) {

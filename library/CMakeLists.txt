@@ -55,7 +55,8 @@ target_compile_definitions(lua_static PUBLIC ${LUA_DEFINITIONS})
 
 add_library(lua++_static STATIC
 	src/State.cpp
-	src/Type.cpp)
+	src/Type.cpp
+	src/CppFunction.cpp)
 
 target_link_libraries(lua++_static lua_static)
 target_compile_features(lua++_static PUBLIC cxx_std_17)

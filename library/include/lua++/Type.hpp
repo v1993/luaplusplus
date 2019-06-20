@@ -27,8 +27,18 @@ namespace Lua {
 	 * 4. full userdata (so user can set up custom types easily)
 	 * @see State::registerStandardTypes() for table of standard types and handlers.
 	*/
+	class State;
 	class TypeBase {
 		public:
+			/**
+			 * @brief Do generic init required for proper type usage.
+			 *
+			 * This function is called once when registering type to State.
+			 * You must leave %Lua stack in its original state.
+			 *
+			 * @param state State type is being registered to.
+			*/
+			virtual void init([[maybe_unused]] State& state) const {};
 			/**
 			 * @brief Which C++ type does this handler serve.
 			 * @todo Make `constexpr` in C++20.

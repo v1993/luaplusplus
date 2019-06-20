@@ -453,6 +453,22 @@ namespace Lua {
 						}
 				};
 
+			/**
+			 * @brief Add values from key-pair container into value on top of stack.
+			 *
+			 * This function use range-based for loop to push both key and value
+			 * onto stack and then call `lua_settable` to add them into table.
+			 *
+			 * @param dict Container to be traversed.
+			 * @throw Lua::Error Type handler wasn't found.
+			*/
+			template<typename T>
+			void pushDict(const T& dict) {
+				for (const auto& [first, second] : dict) {
+						push(first, second);
+						lua_settable(state, -3);
+						}
+				};
 			/// @}
 
 			/// Get underlying `lua_State*`
@@ -476,6 +492,7 @@ namespace Lua {
 		public:
 			StatePtr() = delete;
 			StatePtr(lua_State* L); ///< Construct object and update lua_State in recivied State if required
+			StatePtr(const StatePtr&) = delete;
 			virtual ~StatePtr(); ///< Destructor
 
 			/// Access State object as normal
