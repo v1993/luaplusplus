@@ -51,6 +51,11 @@ target_include_directories(lua_static PUBLIC "${LUA_LIB_INCLUDE}")
 set(LUA_DEFINITIONS LUA_USE_POSIX)
 target_compile_definitions(lua_static PUBLIC ${LUA_DEFINITIONS})
 
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+	message(STATUS "Clang detected, passing -xc++ to prevent warnings")
+	target_compile_options(lua_static PRIVATE "-xc++")
+endif()
+
 # lua++
 
 add_library(lua++_static STATIC

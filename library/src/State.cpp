@@ -274,14 +274,15 @@ namespace Lua {
 
 	void State::registerStandardTypes() {
 		// Same object is used for every instance
-		static const std::array<std::shared_ptr<TypeBase>, 7> dtypes = {
+		static const std::array<std::shared_ptr<TypeBase>, 8> dtypes = {
 			std::make_shared<Lua::TypeBool>(),
 			std::make_shared<Lua::TypeString>(),
 			std::make_shared<Lua::TypeCString>(),
 			std::make_shared<Lua::TypeNumber>(),
 			std::make_shared<Lua::TypeNull>(),
 			std::make_shared<Lua::TypeLightUserdata>(),
-			std::make_shared<Lua::TypeCppFunction>()
+			std::make_shared<Lua::TypeCppFunction>(),
+			std::make_shared<Lua::TypeCppFunctionWrapper>()
 			};
 
 		for (const auto& elem : dtypes) {
@@ -306,6 +307,10 @@ namespace Lua {
 				oldState = ptr->state;
 				ptr->state = L;
 				}
+		};
+
+	StatePtr::StatePtr(State& L) {
+		ptr = &L;
 		};
 
 	StatePtr::~StatePtr() {

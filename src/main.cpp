@@ -13,19 +13,26 @@ using namespace Lua::NumberLiterals;  // for _ln and _li
 
 class MyTestClass {
 	public:
+		MyTestClass() {};
+		MyTestClass(Lua::StatePtr&) { std::cout << "Lua constructor here" << std::endl; };
 		~MyTestClass() { std::cout << "Nap time" << std::endl; };
-		static const std::unordered_map<std::string, std::string> metamethods;
-		static const std::unordered_map<std::string, std::function<int(MyTestClass*, Lua::StatePtr&)>> methods;
+		static const Lua::FunctionsTable metamethods;
+		static const Lua::MethodsTable<MyTestClass> methods;
 		
 		int TestMethod(Lua::StatePtr& Lp) { std::cout << "I'm flying!" << std::endl; return 0; };
+		int TestMethod2(Lua::StatePtr& Lp) { std::cout << "Please put me down." << std::endl; return 0; };
 		int __index(Lua::StatePtr& Lp) { Lp->push("Unknown index"); return 1; };
 };
 
-const std::unordered_map<std::string, std::string> MyTestClass::metamethods = {
+class EmptyClass {};
+
+const Lua::FunctionsTable MyTestClass::metamethods = {
+	{"__call", [](Lua::StatePtr& Lp){ Lp->push("Who called me? ^_^"); return 1; }}
 };
 
-const std::unordered_map<std::string, std::function<int(MyTestClass*, Lua::StatePtr&)>> MyTestClass::methods = {
-	{"TestMethod", std::bind(&MyTestClass::TestMethod, std::placeholders::_1, std::placeholders::_2)}
+const Lua::MethodsTable<MyTestClass> MyTestClass::methods = {
+	Lua::CppMethodPair("TestMethod", &MyTestClass::TestMethod),
+	Lua::CppMethodPair("TestMethod2", &MyTestClass::TestMethod2)
 };
 
 int main() {
@@ -56,7 +63,7 @@ int main() {
 
 		{
 		// Normal numbers (always use literals)
-		L.pushOne(5.3_ln);
+		L.pushOne(5.4_ln);
 		auto ret = L.getOne<Lua::Number>(-1);
 		std::cout << "I've got a lua_Number for you: " << (lua_Number)*ret << std::endl;
 		lua_pop(L, 1);
@@ -102,7 +109,7 @@ int main() {
 	// Testing bool and pointer from state
 
 		{
-		auto x = Lua::StatePtr(L);
+		auto x = Lua::StatePtr((lua_State*)L);
 		x->pushOne(false);
 		auto ret = x->getOne<bool>(-1);
 		std::cout << "This sentence is " << std::boolalpha << *ret << std::endl;
@@ -213,19 +220,30 @@ Isn't it awesome? ♥]]))LUA"
 		);
 		L.pcall(0, 0);
 		}
-	
+
+	// Stack is empty
+	// Test C++ types
+
 	{
-		L.registerType(std::make_shared<Lua::TypeHelper<MyTestClass>>());
-		auto testObj = std::make_shared<MyTestClass>();
+		L.registerType(std::make_shared<Lua::TypeHelper<EmptyClass>>()); // Check that empty class is fine
+		auto helper = std::make_shared<Lua::TypeHelper<MyTestClass>>();
+		L.registerType(helper);
+		//L.loadDefaultLib(Lua::DefaultLibs::DEBUG);
 		L.load(
 			R"LUA(
-local testObj = ({...})[1]
+local testObjStatic = ({...})[1]
+local testObj = testObjStatic()
 print(testObj)
 print(testObj.TestMethod)
+print(CppFunctionWrapper(testObj.TestMethod))
+print(testObj.HelloWorld)
 testObj:TestMethod()
+CppFunctionWrapper(testObj.TestMethod2, testObj.TestMethod)(testObj)
+print(testObj())
 		)LUA"
 		);
-		L.push(testObj);
+		auto Lp = Lua::StatePtr(L);
+		assert(helper->pushStatic(Lp));
 		L.pcall(1, 0);
 	}
 

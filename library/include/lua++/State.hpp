@@ -311,14 +311,20 @@ namespace Lua {
 			 *
 			 * This include:
 			 *
-			 * |   C++ type    |    %Lua type     |       Handler       |
-			 * |---------------|------------------|---------------------|
-			 * | `bool`        | `boolean`        | `TypeBool`          |
-			 * | `std::string` | `string`         | `TypeString`        |
-			 * | C string      | `string`         | `TypeCString`       |
-			 * | `Lua::Number` | `number`         | `TypeNumber`        |
-			 * | `nullptr(_t)` | `nil`            | `TypeNull`          |
-			 * | `void*`       | `light userdata` | `TypeLightUserdata` |
+			 * |      C++ type        |    %Lua type     |          Handler         |
+			 * |----------------------|------------------|--------------------------|
+			 * | `bool`               | `boolean`        | `TypeBool`               |
+			 * | `std::string`        | `string`         | `TypeString`             |
+			 * | C string             | `string`         | `TypeCString`            |
+			 * | `Lua::Number`        | `number`         | `TypeNumber`             |
+			 * | `nullptr(_t)`        | `nil`            | `TypeNull`               |
+			 * | `void*`              | `light userdata` | `TypeLightUserdata`      |
+			 * | `CppFunction`        | `CppFunction`    | `TypeCppFunction`        |
+			 * | `CppFunctionWrapper` | `function`       | `TypeCppFunctionWrapper` |
+			 *
+			 * `Lua::CppFunction` is an alias for `std::function<int(Lua::StatePtr&)>`.
+			 * "Normal" %Lua functions aren't mapped because of lack of C++ side
+			 * representations.
 			 *
 			 * @note This function is already called when using constructor with
 			 * argument different from `DefaultLibsPreset::NONE` so most users
@@ -329,6 +335,20 @@ namespace Lua {
 
 			/// @name Interaction with %Lua stack
 			/// @{
+
+			/**
+			 * @brief Check is value at given stack index represent requested type.
+			 *
+			 * @param idx Index on %Lua stack.
+			 * @return Can value be represented as requested C++ type.
+			 *
+			 * @throw Lua::Error Type handler wasn't found.
+			*/
+			template<typename T>
+			bool isType(int idx) {
+				auto& handler = getTypeHandler(typeid(T));
+				return handler->checkType(state, idx);
+				};
 
 			/**
 			 * @brief Push one element onto %Lua stack.
@@ -389,25 +409,21 @@ namespace Lua {
 			/**
 			 * @brief Push any amount of values onto %Lua stack.
 			 *
-			 * This function is recursive template-based generalisation over pushOne().
+			 * This function is template-based generalisation over pushOne().
 			 * It will try to push all given arguments one-by-one (see original function docs for details).
 			 *
 			 * @param value,Fargs Values to be pushed.
 			 * @throw Lua::Error Type handler wasn't found.
 			*/
-			template<typename T, typename... Targs>
-			void push(T value, Targs... Fargs) {
-				pushOne(value);
-
-				if constexpr(sizeof...(Fargs) > 0) {
-						return push(Fargs...);
-						}
+			template<typename... Targs>
+			void push(Targs... Fargs) {
+				(pushOne<Targs>(Fargs), ...);
 				};
 
 			/**
 			 * @brief Get any amount of values from %Lua stack.
 			 *
-			 * This function is recursive template-based generalisation over getOne().
+			 * This function is template-based generalisation over getOne().
 			 *
 			 * It will return `std::tuple` composed of types of required items (wrapped into `std::optional`).
 			 * Use C++17 tuple unpacking syntax to map them to variables (see examples below)
@@ -434,24 +450,15 @@ namespace Lua {
 			 * @param dir Direction of stack unwinding (see above)
 			 * @return Tuple of requested values
 			*/
-			template<typename T, typename... Tres>
-			auto get(int idx, bool dir) {
-				auto res = getOne<T>(idx);
-
-				if constexpr(sizeof...(Tres) > 0) {
-						if (dir) {
-								++idx;
-								}
-						else {
-								--idx;
-								}
-
-						return std::tuple_cat(std::make_tuple(res), get<Tres...>(idx, dir));
+			template<typename... Tres>
+			std::tuple<std::optional<Tres>...> get(int idx, bool dir) {
+				if (dir) {
+						return { getOne<Tres>(idx++)... };
 						}
 				else {
-						return std::make_tuple(res);
+						return { getOne<Tres>(idx--)... };
 						}
-				};
+				}
 
 			/**
 			 * @brief Add values from key-pair container into value on top of stack.
@@ -492,6 +499,7 @@ namespace Lua {
 		public:
 			StatePtr() = delete;
 			StatePtr(lua_State* L); ///< Construct object and update lua_State in recivied State if required
+			StatePtr(State&); ///< Construct object from State to eleminate extra checks (doesn't update pointer)
 			StatePtr(const StatePtr&) = delete;
 			virtual ~StatePtr(); ///< Destructor
 

@@ -36,9 +36,9 @@ namespace Lua {
 			 * This function is called once when registering type to State.
 			 * You must leave %Lua stack in its original state.
 			 *
-			 * @param state State type is being registered to.
+			 * @param L State type is being registered to.
 			*/
-			virtual void init([[maybe_unused]] State& state) const {};
+			virtual void init([[maybe_unused]] State& L) const {};
 			/**
 			 * @brief Which C++ type does this handler serve.
 			 * @todo Make `constexpr` in C++20.

@@ -9,8 +9,8 @@ local a = setmetatable({},{
 	})
 ]]--
 
--- Following string cause a crash!
---local a = setmetatable({},{__gc = function() error("Uh-oh") end})
+-- Following string caused a crash because of lua bug, does not anymore
+local a = setmetatable({},{__gc = function() error("Uh-oh") end})
 
 
 warn("Um, hello.")

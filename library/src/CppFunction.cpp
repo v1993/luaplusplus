@@ -8,6 +8,7 @@ namespace Lua {
 		if (checkCppType<CppFunction>(L, 1, tname)) { // Valid object
 				auto ptr = static_cast<CppFunction**>(lua_touserdata(L, 1));
 				delete *ptr;
+				*ptr = nullptr;
 				}
 		else {
 				lua_warning(L, "Invalid CppFunction in destructor", false);
@@ -63,6 +64,74 @@ namespace Lua {
 		luaL_setmetatable(L, tname);
 		// And only THEN add real data
 		*newptr = new CppFunction(origFunc);
+		};
+
+	const std::type_info& TypeCppFunctionWrapper::getType() const noexcept {
+		return typeid(CppFunctionWrapper);
+		};
+
+	bool TypeCppFunctionWrapper::checkType(lua_State* L, int idx) const noexcept {
+		// Stack: xxx
+		auto res = false;
+
+		if (lua_iscfunction(L, idx)) {
+				if (lua_getupvalue(L, idx, 2)) {
+						// Stack: xxx, upvalue
+						if (lua_islightuserdata(L, -1)) {
+								res = lua_touserdata(L, -1) == getId();
+								}
+
+						lua_pop(L, 1);
+						// Stack: xxx
+						};
+				};
+
+		return res;
+		};
+
+	std::any TypeCppFunctionWrapper::getValue(lua_State* L, int idx) const {
+		// Stack: xxx
+		lua_getupvalue(L, idx, 1);
+		// Stack: xxx, upvalue
+		auto res = StatePtr(L)->getOne<CppFunction>(-1);
+		lua_pop(L, 1);
+		// Stack: xxx
+		return CppFunctionWrapper(res.value());
+		};
+
+	int TypeCppFunctionWrapper::call(lua_State* L) {
+
+		// Get function, push it into first place on stack, forward call
+		lua_pushvalue(L, lua_upvalueindex(1));
+		lua_insert(L, 1);
+		return TypeCppFunction::call(L);
+		};
+
+	int TypeCppFunctionWrapper::luaCreate(Lua::StatePtr& Lp) {
+		auto nargs = lua_gettop(**Lp) - 1;
+
+		for (int i = 1; i <= nargs; ++i) {
+				auto func = Lp->getOne<CppFunction>(i + 1);
+
+				if (func) Lp->push(CppFunctionWrapper(*func));
+				else      Lp->push(nullptr);
+				};
+
+		return nargs;
+		};
+
+	void TypeCppFunctionWrapper::init(Lua::State& L) const {
+		L.push(static_cast<CppFunction>(luaCreate));
+		lua_setglobal(L, "CppFunctionWrapper");
+		};
+
+	void TypeCppFunctionWrapper::pushValue(lua_State* L, const std::any& obj) const {
+		auto& origFunc = std::any_cast<std::reference_wrapper<const CppFunctionWrapper>>(obj).get();
+		// Push internal function
+		StatePtr(L)->push<CppFunction>(origFunc.func);
+		lua_pushlightuserdata(L, getId());
+		// Pop internal function, push wrapper
+		lua_pushcclosure(L, call, 2);
 		};
 	};
 // kate: indent-mode cstyle; indent-width 4; replace-tabs off; tab-width 4; 
