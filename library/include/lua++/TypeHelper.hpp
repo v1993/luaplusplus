@@ -1,7 +1,6 @@
 #pragma once
 #include "lua++/CppFunction.hpp"
 #include "lua++/State.hpp"
-#include <string_view>
 #include <cassert>
 
 namespace Lua {
