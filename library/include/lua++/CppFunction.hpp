@@ -18,7 +18,7 @@ namespace Lua {
 	 *
 	 * `CppFunctionWrapper` wraps `CppFunction` with pure C function with upvalue, removing most
 	 * of such limitations.
-	 * 
+	 *
 	 * @warning Function arguments will begin on stack index 2. Stack
 	 * index 1 will contain `CppFunction` object itself. Please don't touch it.
 	*/
@@ -36,22 +36,28 @@ namespace Lua {
 	/// Alias for `std::function<int(T*, Lua::StatePtr&)>`.
 	template<typename T>
 	using CppMethod = std::function<int(T*, Lua::StatePtr&)>;
-	
+
 	/**
 	 * @brief Bind CppMethod-conformant object to callable type
 	 * @note Result isn't `CppMethod`, but can be casted to it if argument is valid.
-	 * 
+	 *
 	 * ```
 	 * auto x = CppMethodBind(&T::myMethod);
 	 * ```
 	*/
 	template<typename F>
 	constexpr auto CppMethodBind(F arg) { return std::bind(arg, std::placeholders::_1, std::placeholders::_2); };
-	
+
 	template<typename F>
 	constexpr auto CppMethodPair(const std::string& name, F arg) {
 		return std::make_pair(name, CppMethodBind(arg));
-	};
+		};
+
+	enum class cppTypeCheckResult {
+		OK,
+		MISMATCH,
+		NULLED
+		};
 
 	/**
 	 * @brief Helper function to check is given value an object of valid C++ type
@@ -67,7 +73,7 @@ namespace Lua {
 	 * @return Is value at given index a valid object of requested type.
 	*/
 	template<typename T>
-	bool checkCppType(lua_State* L, int idx, const char* name) {
+	cppTypeCheckResult checkCppType(lua_State* L, int idx, const char* name) {
 		// Stack: xxx
 		if ((lua_type(L, idx) == LUA_TUSERDATA) and lua_getmetatable(L, idx)) {
 				// Stack: xxx, metatable for our value
@@ -78,14 +84,13 @@ namespace Lua {
 
 				// Stack: xxx
 				if (mteq) {
-						// If metatables are the same, check for `nullptr` (if `push` failed)
-						// Will most likely NEVER fail, but check to be extra sure
+						// If metatables are the same, check for `nullptr` (if `push` failed or object finalized)
 						auto ptr = static_cast<T**>(lua_touserdata(L, idx));
-						return *ptr != nullptr;
+						return (*ptr == nullptr) ? cppTypeCheckResult::NULLED : cppTypeCheckResult::OK;
 						}
 				}
 
-		return false;
+		return cppTypeCheckResult::MISMATCH;
 		};
 
 	/**

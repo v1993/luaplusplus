@@ -5,26 +5,25 @@
 namespace Lua {
 
 	int TypeCppFunction::gc(lua_State* L) {
-		if (checkCppType<CppFunction>(L, 1, tname)) { // Valid object
+		if (checkCppType<CppFunction>(L, 1, tname) == cppTypeCheckResult::OK) { // Valid object
 				auto ptr = static_cast<CppFunction**>(lua_touserdata(L, 1));
 				delete *ptr;
 				*ptr = nullptr;
 				}
-		else {
-				lua_warning(L, "Invalid CppFunction in destructor", false);
-				}
+
+		// No worries, it's probably just closed
 
 		return 0;
 		};
 
 	int TypeCppFunction::call(lua_State* L) {
-		if (checkCppType<CppFunction>(L, 1, tname)) { // Valid object
+		if (checkCppType<CppFunction>(L, 1, tname) == cppTypeCheckResult::OK) { // Valid object
 				auto ptr = static_cast<CppFunction**>(lua_touserdata(L, 1));
 				auto Lp = StatePtr(L);
 				return LuaErrorWrapper(L, **ptr, {Lp});
 				}
 		else {
-				luaL_error(L, "CppFunction call");
+				luaL_error(L, "Call to closed or invalid CppFunction");
 				return 0;
 				}
 		};
@@ -46,7 +45,7 @@ namespace Lua {
 		};
 
 	bool TypeCppFunction::checkType(lua_State* L, int idx) const noexcept {
-		return checkCppType<CppFunction>(L, idx, tname);
+		return checkCppType<CppFunction>(L, idx, tname) == cppTypeCheckResult::OK;
 		};
 
 	std::any TypeCppFunction::getValue(lua_State* L, int idx) const {

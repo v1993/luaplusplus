@@ -18,22 +18,22 @@ class MyTestClass {
 		~MyTestClass() { std::cout << "Nap time" << std::endl; };
 		static const Lua::FunctionsTable metamethods;
 		static const Lua::MethodsTable<MyTestClass> methods;
-		
+
 		int TestMethod(Lua::StatePtr& Lp) { std::cout << "I'm flying!" << std::endl; return 0; };
 		int TestMethod2(Lua::StatePtr& Lp) { std::cout << "Please put me down." << std::endl; return 0; };
 		int __index(Lua::StatePtr& Lp) { Lp->push("Unknown index"); return 1; };
-};
+	};
 
 class EmptyClass {};
 
 const Lua::FunctionsTable MyTestClass::metamethods = {
-	{"__call", [](Lua::StatePtr& Lp){ Lp->push("Who called me? ^_^"); return 1; }}
-};
+		{"__call", [](Lua::StatePtr & Lp) { Lp->push("Who called me? ^_^"); return 1; }}
+	};
 
 const Lua::MethodsTable<MyTestClass> MyTestClass::methods = {
 	Lua::CppMethodPair("TestMethod", &MyTestClass::TestMethod),
 	Lua::CppMethodPair("TestMethod2", &MyTestClass::TestMethod2)
-};
+	};
 
 int main() {
 	Lua::State state(Lua::DefaultLibsPreset::SAFE_WITH_PACKAGE);
@@ -204,7 +204,7 @@ int main() {
 			std::stringstream sstr;
 			sstr << "local str = [[";
 
-			for (size_t i = 0; i < BUFSIZ*4; ++i) {
+			for (size_t i = 0; i < BUFSIZ * 4; ++i) {
 					sstr << "A";
 					}
 
@@ -224,7 +224,7 @@ Isn't it awesome? ♥]]))LUA"
 	// Stack is empty
 	// Test C++ types
 
-	{
+		{
 		L.registerType(std::make_shared<Lua::TypeHelper<EmptyClass>>()); // Check that empty class is fine
 		auto helper = std::make_shared<Lua::TypeHelper<MyTestClass>>();
 		L.registerType(helper);
@@ -240,12 +240,19 @@ print(testObj.HelloWorld)
 testObj:TestMethod()
 CppFunctionWrapper(testObj.TestMethod2, testObj.TestMethod)(testObj)
 print(testObj())
+
+local ovar
+do
+	local <toclose> var = testObjStatic() -- Shouldn't cause warnings
+	ovar = var
+end
+print(pcall(ovar)) -- NOTE: Doesn't fail. You must check that value is valid.
 		)LUA"
 		);
 		auto Lp = Lua::StatePtr(L);
 		assert(helper->pushStatic(Lp));
 		L.pcall(1, 0);
-	}
+		}
 
 	return EXIT_SUCCESS;
 	}

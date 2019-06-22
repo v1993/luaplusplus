@@ -111,11 +111,22 @@ namespace Lua {
 	class TypeHelper: public TypeBase {
 		private:
 			static bool isType(lua_State* L, int idx) {
-				return checkCppType<std::shared_ptr<T>>(L, idx, tname().c_str());
+				return checkCppType<std::shared_ptr<T>>(L, idx, tname().c_str()) == cppTypeCheckResult::OK;
 				};
 
 			static void enforceType(lua_State* L, int idx) {
-				if (!isType(L, idx)) luaL_error(L, "Calling C++ method on invalid type (potential hacking attempt)");
+				switch (checkCppType<std::shared_ptr<T>>(L, idx, tname().c_str())) {
+					case cppTypeCheckResult::NULLED:
+						luaL_error(L, "Trying to access closed %s", tname().c_str());
+						break;
+
+					case cppTypeCheckResult::MISMATCH:
+						luaL_error(L, "Trying to wrong object type using %s", tname().c_str());
+						break;
+
+					case cppTypeCheckResult::OK:
+						break;
+						}
 				};
 
 			static int staticIndex(lua_State* L) {
@@ -154,9 +165,6 @@ namespace Lua {
 						auto ptr = static_cast<std::shared_ptr<T>**>(lua_touserdata(L, 1));
 						delete *ptr;
 						*ptr = nullptr; // To be 100% sure
-						}
-				else {
-						lua_warning(L, "Invalid object in destructor", false);
 						}
 
 				return 0;
