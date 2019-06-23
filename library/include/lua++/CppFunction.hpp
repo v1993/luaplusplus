@@ -35,7 +35,34 @@ namespace Lua {
 
 	/// Alias for `std::function<int(T*, Lua::StatePtr&)>`.
 	template<typename T>
-	using CppMethod = std::function<int(T*, Lua::StatePtr&)>;
+	using CppMethod = std::function<int(T*, StatePtr&)>;
+
+	template<typename T, typename... Targs, typename F>
+	constexpr auto CppMethodWrapper(F func) {
+		return [func](T * obj, StatePtr & Lp) -> int {
+			auto args = Lp->get<Targs...>(3, true);
+			constexpr auto checkArgs = [](const auto & ... item) {
+				return (item && ...);
+				};
+
+			if (std::apply(checkArgs, args)) {
+					auto doCall = [&func, &obj](const auto & ... item) {
+						return std::invoke(func, obj, item.value()...);
+						};
+
+					if constexpr(std::is_same<decltype(std::apply(doCall, args)), void>::value) {
+							std::apply(doCall, args);
+							return 0;
+							}
+					else {
+							auto ret = std::apply(doCall, args);
+							return Lp->push(ret);
+							}
+					}
+
+			return luaL_error(**Lp, "Wrong arguments");
+			};
+		};
 
 	/**
 	 * @brief Bind CppMethod-conformant object to callable type

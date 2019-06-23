@@ -21,6 +21,13 @@ class MyTestClass {
 
 		int TestMethod(Lua::StatePtr& Lp) { std::cout << "I'm flying!" << std::endl; return 0; };
 		int TestMethod2(Lua::StatePtr& Lp) { std::cout << "Please put me down." << std::endl; return 0; };
+		std::string MethodWrapped(lua_Number Ln, std::string str) {
+			std::cout << "Numbery: " << Ln << std::endl;
+			std::cout << "Wordy: " << str << std::endl;
+			return "Yeah";
+			};
+		void MethodWrappedVoid() { std::cout << "I take nothing and give nothing" << std::endl; }
+		std::tuple<std::string, Lua::Number> MethodManyRes() { return {"Meaning of life is", 42_li}; };
 		int __index(Lua::StatePtr& Lp) { Lp->push("Unknown index"); return 1; };
 	};
 
@@ -32,7 +39,10 @@ const Lua::FunctionsTable MyTestClass::metamethods = {
 
 const Lua::MethodsTable<MyTestClass> MyTestClass::methods = {
 	Lua::CppMethodPair("TestMethod", &MyTestClass::TestMethod),
-	Lua::CppMethodPair("TestMethod2", &MyTestClass::TestMethod2)
+	Lua::CppMethodPair("TestMethod2", &MyTestClass::TestMethod2),
+		{"MethodWrapped", Lua::CppMethodWrapper<MyTestClass, Lua::Number, std::string>(&MyTestClass::MethodWrapped)},
+		{"MethodWrappedVoid", Lua::CppMethodWrapper<MyTestClass>(&MyTestClass::MethodWrappedVoid)},
+		{"MethodManyRes", Lua::CppMethodWrapper<MyTestClass>(&MyTestClass::MethodManyRes)},
 	};
 
 int main() {
@@ -247,6 +257,10 @@ do
 	ovar = var
 end
 print(pcall(ovar)) -- NOTE: Doesn't fail. You must check that value is valid.
+
+print(testObj:MethodWrapped(10, "Hey! Listen!"))
+testObj:MethodWrappedVoid()
+print(testObj:MethodManyRes())
 		)LUA"
 		);
 		auto Lp = Lua::StatePtr(L);

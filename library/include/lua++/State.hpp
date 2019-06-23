@@ -85,6 +85,9 @@ namespace Lua {
 			*/
 			template<typename T>
 			void loadInternal(T& reader, const std::string& name, LoadMode mode);
+
+			template <typename> struct is_tuple: std::false_type {};
+			template <typename ...T> struct is_tuple<std::tuple<T...>>: std::true_type {};
 		protected:
 			lua_State* state = nullptr; ///< lua_State being currently managed (coroutine-specific).
 			lua_State* mainState = nullptr; ///< main lua_State.
@@ -356,14 +359,29 @@ namespace Lua {
 			 * This function will call appropriate type handler (which may vary depending
 			 * on ones you installed).
 			 *
+			 * @note If `std::tuple<...>` is passed, it's unwrapped into call
+			 * to `push`.
+			 *
 			 * @param data Your variable to be pushed.
+			 * @return Number of values pushed on stack (always 1 until using tuples)
 			 * @throw Lua::Error Type handler wasn't found.
 			*/
+
 			template<typename T>
-			void pushOne(const T& data) {
-				using decayed = std::decay_t<const T>;
-				auto& handler = getTypeHandler(typeid(decayed));
-				handler->pushValue(state, std::ref(static_cast<const decayed&>(data)));
+			int pushOne(const T& data) {
+				if constexpr(is_tuple<T>::value) {
+						// Unwrap data passes as a tuple
+						auto call = [this](const auto & ... args) {
+							return push(args...);
+							};
+						return std::apply(call, data);
+						}
+				else {
+						using decayed = std::decay_t<const T>;
+						auto& handler = getTypeHandler(typeid(decayed));
+						handler->pushValue(state, std::ref(static_cast<const decayed&>(data)));
+						return 1;
+						}
 				};
 
 			/**
@@ -413,11 +431,13 @@ namespace Lua {
 			 * It will try to push all given arguments one-by-one (see original function docs for details).
 			 *
 			 * @param value,Fargs Values to be pushed.
+			 * @return Number of values pushed onto stack (eqaul to number of argumnets until
+			 * using tuples)
 			 * @throw Lua::Error Type handler wasn't found.
 			*/
 			template<typename... Targs>
-			void push(Targs... Fargs) {
-				(pushOne<Targs>(Fargs), ...);
+			int push(Targs... Fargs) {
+				return (pushOne<Targs>(Fargs) + ...);
 				};
 
 			/**
