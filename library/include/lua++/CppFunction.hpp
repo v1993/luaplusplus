@@ -4,7 +4,7 @@
 
 namespace Lua {
 	/// Alias for `std::function<int(Lua::StatePtr&)>` AKA C++ version of `lua_CFunction`.
-	using CppFunction = std::function<int(Lua::StatePtr&)>;
+	using CppFunction = std::function<int(StatePtr&)>;
 
 	/**
 	 * @brief No-op wrapper around CppFunction aka `std::function<int(Lua::StatePtr&)>`.
@@ -30,31 +30,104 @@ namespace Lua {
 		/// Cast operator for easier usage in some cases.
 		operator CppFunction() { return func; };
 		/// Cast (reference) operator for easier usage in some cases.
-		operator CppFunction&() { return func; };
+		operator CppFunction& () { return func; };
 		};
 
 	/// Alias for `std::function<int(T*, Lua::StatePtr&)>`.
 	template<typename T>
 	using CppMethod = std::function<int(T*, StatePtr&)>;
 
-	template<typename T, typename... Targs, typename F>
-	constexpr auto CppMethodWrapper(F func) {
-		return [func](T * obj, StatePtr & Lp) -> int {
-			auto args = Lp->get<Targs...>(3, true);
-			constexpr auto checkArgs = [](const auto & ... item) {
-				return (item && ...);
-				};
+	/// Utility functions for internal usage
+	namespace CppHelpers {
+		/// Cast arguments too `bool` and apply `&&` to result.
+		constexpr auto CheckArgs = [](const auto& ... item) -> bool {
+			return (static_cast<bool>(item) && ...);
+			};
+		/**
+		 * @brief Apply `CheckArgs` to tuple members.
+		 *
+		 * This function could be useful for you as well. Example:
+		 *
+		 * ```
+		 * auto args = Lp->get<…>(2, true);
+		 * if (Lua::CppHelpers::CheckTuple(args)) {
+		 *    // All arguments are valid
+		 * }
+		 * ```
+		*/
+		constexpr auto CheckTuple = [](const auto& tuple) -> bool {
+			return std::apply(CheckArgs, tuple);
+			};
+		// Note: for type deduction only
+		/// Deduce class from pointer to member function (can be combined with `std::declval` for arguments).
+		template<typename R, typename C, typename... Args, typename = std::enable_if_t<std::is_member_function_pointer_v<R(C::*)(Args...)>>>
+				C ClassFromFunctionPtr(R(C::*)(Args...));
+		};
 
-			if (std::apply(checkArgs, args)) {
-					auto doCall = [&func, &obj](const auto & ... item) {
-						return std::invoke(func, obj, item.value()...);
+	/**
+	 * @brief Wrap generic C++ function to version callable from %Lua.
+	 *
+	 * This is a very powerful mechanism which, for example, allow you to call
+	 * ```
+	 * std::string numberToString(lua_Number);
+	 * ```
+	 * from %Lua without much effort like this:
+	 *
+	 * ```
+	 * CppFunctionNative<Lua::Number>(&numberToString);
+	 * ```
+	 *
+	 * Abiliies and limitations:
+	 * 1. Function arguments may be either values or (non-/const) l-references.
+	 * 2. You must specify function arguments manually. This, however, allows you
+	 * to accept and pop different types where popped one (providen in template)
+	 * must be convertible to ones you accept.
+	 * 3. Due to template limitations no overloaded functions are possible. But it
+	 * should be rather trivial to implement them if you'll take a look at this function.
+	*/
+	template<typename... Targs, typename F>
+	constexpr auto CppFunctionNative(F func) {
+		return [func](StatePtr & Lp) -> int {
+			auto args = Lp->get<Targs...>(2, true);
+
+			if (CppHelpers::CheckTuple(args)) {
+					auto doCall = [&func](auto&& ... item) {
+						return std::invoke(func, *item...);
 						};
 
-					if constexpr(std::is_same<decltype(std::apply(doCall, args)), void>::value) {
+					if constexpr(std::is_void_v<decltype(std::apply(doCall, args))>) {
+							// Function return void
 							std::apply(doCall, args);
 							return 0;
 							}
 					else {
+							// Function return stuff
+							auto ret = std::apply(doCall, args);
+							return Lp->push(ret);
+							}
+					}
+
+			return luaL_error(**Lp, "Wrong arguments");
+			};
+		};
+
+	template<typename... Targs, typename F, typename T = decltype(CppHelpers::ClassFromFunctionPtr(std::declval<F>())) >
+	constexpr CppMethod<T> CppMethodNative(F func) {
+		return [func](T * obj, StatePtr & Lp) -> int {
+			auto args = Lp->get<Targs...>(3, true);
+
+			if (CppHelpers::CheckTuple(args)) {
+					auto doCall = [&func, &obj](auto&& ... item) {
+						return std::invoke(func, obj, *item...);
+						};
+
+					if constexpr(std::is_void_v<decltype(std::apply(doCall, args))>) {
+							// Function return void
+							std::apply(doCall, args);
+							return 0;
+							}
+					else {
+							// Function return stuff
 							auto ret = std::apply(doCall, args);
 							return Lp->push(ret);
 							}
@@ -65,19 +138,38 @@ namespace Lua {
 		};
 
 	/**
-	 * @brief Bind CppMethod-conformant object to callable type
-	 * @note Result isn't `CppMethod`, but can be casted to it if argument is valid.
+	 * @brief Bind C++ CppMethod-compiant method to wrapper type.
+	 * @note Result is exactly `CppMethod` and can be supplied to RTTI functions directly.
 	 *
 	 * ```
 	 * auto x = CppMethodBind(&T::myMethod);
 	 * ```
+	 *
+	 * @param func Pointer to member function with signature `int(StatePtr&)`.
+	*/
+	template<typename F, typename T = decltype(CppHelpers::ClassFromFunctionPtr(std::declval<F>())) >
+	constexpr CppMethod<T> CppMethodBind(F func) { return std::bind(func, std::placeholders::_1, std::placeholders::_2); };
+
+	/**
+	 * @brief Wrapper around CppMethodBind for usage in containers.
+	 *
+	 * ```
+	 * const Lua::MethodsTable<TestClass> TestClass::methods = {
+	 *     Lua::CppMethodPair("TestMethod", &TestClass::TestMethod)
+	 * }
+	 *
+	 * @param name String to be used as key.
+	 * @param func Pointer to member function with signature `int(StatePtr&)`.
+	 * ```
 	*/
 	template<typename F>
-	constexpr auto CppMethodBind(F arg) { return std::bind(arg, std::placeholders::_1, std::placeholders::_2); };
+	constexpr auto CppMethodPair(const std::string& name, F func) {
+		return std::make_pair(name, CppMethodBind(func));
+		};
 
-	template<typename F>
-	constexpr auto CppMethodPair(const std::string& name, F arg) {
-		return std::make_pair(name, CppMethodBind(arg));
+	template<typename... Targs, typename F, typename T = decltype(CppHelpers::ClassFromFunctionPtr(std::declval<F>())) >
+	constexpr std::pair<std::string, CppMethod<T>> CppMethodNativePair(const std::string& name, F func) {
+		return std::make_pair(name, CppMethodNative<Targs...>(func));
 		};
 
 	enum class cppTypeCheckResult {
@@ -163,3 +255,4 @@ namespace Lua {
 		};
 	};
 // kate: indent-mode cstyle; indent-width 4; replace-tabs off; tab-width 4; 
+

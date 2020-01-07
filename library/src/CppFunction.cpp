@@ -29,7 +29,8 @@ namespace Lua {
 		};
 
 	void TypeCppFunction::init(Lua::State& L) const {
-		assert((luaL_newmetatable(L, tname)));
+		[[maybe_unused]] auto mtok = luaL_newmetatable(L, tname);
+		assert(mtok);
 
 		lua_pushcclosure(L, call, 0);
 		lua_setfield(L, -2, "__call");

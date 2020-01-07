@@ -153,7 +153,7 @@ namespace Lua {
 
 	// TypeLightUserdata
 	const std::type_info& TypeLightUserdata::getType() const noexcept {
-		return typeid(void * const);
+		return typeid(void* const);
 		};
 
 	bool TypeLightUserdata::checkType(lua_State* L, int idx) const noexcept {
@@ -165,7 +165,7 @@ namespace Lua {
 		};
 
 	void TypeLightUserdata::pushValue(lua_State* L, const std::any& arg_any) const {
-		auto& ptr = std::any_cast<std::reference_wrapper<void * const>>(arg_any).get();
+		auto& ptr = std::any_cast<std::reference_wrapper<void* const>>(arg_any).get();
 		lua_pushlightuserdata(L, ptr);
 		};
 	};

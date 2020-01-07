@@ -203,9 +203,10 @@ namespace Lua {
 				}
 
 			/// @copydoc TypeBase::init
-			void init(State &L) const override {
+			void init(State& L) const override {
 				// Stack: xxx
-				assert((luaL_newmetatable(L, tname().c_str())));
+				[[maybe_unused]] auto mtok = luaL_newmetatable(L, tname().c_str());
+				assert(mtok);
 				// Stack: xxx, metatable
 
 				// Add built-in `__index`
@@ -228,7 +229,8 @@ namespace Lua {
 
 						// Stack: xxx, mt, static methods table
 						if constexpr(TypeHelperTraits<T>::haveLuaConstructor) {
-								assert((luaL_newmetatable(L, tnameStatic().c_str())));
+								[[maybe_unused]] auto mtok = luaL_newmetatable(L, tnameStatic().c_str());
+								assert(mtok);
 								// Stack: xxx, mt, static methods table, mt for static methods
 								// Add `__call` with constructor
 								L.push(static_cast<CppFunctionWrapper>(staticGetConstructor<T>));
@@ -268,13 +270,13 @@ namespace Lua {
 				return isType(L, idx);
 				};
 
-			std::any getValue(lua_State * L, int idx) const override {
+			std::any getValue(lua_State* L, int idx) const override {
 				using ptrT = std::shared_ptr<T>;
 				auto ptr = static_cast<ptrT**>(lua_touserdata(L, idx));
 				return ptrT(**ptr);
 				};
 
-			void pushValue(lua_State * L, const std::any &obj) const override {
+			void pushValue(lua_State* L, const std::any& obj) const override {
 				using ptrT = std::shared_ptr<T>;
 				auto& origPtr = std::any_cast<std::reference_wrapper<const ptrT>>(obj).get();
 				/// @todo Add support for user values?

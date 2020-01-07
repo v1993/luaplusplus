@@ -17,13 +17,16 @@
 namespace Lua {
 	/**
 	 * @brief Set which libs will be preloaded in Lua::State.
+	 *
+	 * @todo Explain `SAFE_WITH_STRIPPED_PACKAGE` futher
 	*/
 	enum class DefaultLibsPreset {
-		NONE,              ///< No libraries or type handlers.
-		BASE,              ///< Only global functions (`base`).
-		SAFE,              ///< Common libraries: `base`, `coroutine`, `table`, `string`, `math`, `utf8`.
-		SAFE_WITH_PACKAGE, ///< Same as `SAFE`, but also loads `package`.
-		ALL                ///< All Lua libraries: `SAFE_WITH_PACKAGE` + `io`, `os` and `debug`.
+		NONE,                        ///< No libraries or type handlers.
+		BASE,                        ///< Only global functions (`base`).
+		SAFE,                        ///< Common libraries: `base`, `coroutine`, `table`, `string`, `math`, `utf8`.
+		SAFE_WITH_STRIPPED_PACKAGE,  ///< Like `SAFE_WITH_PACKAGE`, but strip potentially dangerous functional (see State::stripPackageLibrary for details).
+		SAFE_WITH_PACKAGE,           ///< Like `SAFE`, but also loads `package`.
+		ALL                          ///< All Lua libraries: `SAFE_WITH_PACKAGE` + `io`, `os` and `debug`.
 		};
 
 	/**
@@ -99,7 +102,7 @@ namespace Lua {
 			std::stringstream warnBuf; ///< Buffer for accumulating warning message parts.
 			std::function<void(const std::string&)> warnFunc; ///< Function to be called on warning message.
 
-			std::optional<std::any> getGeneric(int idx); ///< Helper function for get/getOne which try to deduce type of Lua value.
+			std::any getGeneric(int idx); ///< Helper function for get/getOne which try to deduce type of Lua value.
 
 			/**
 			 * @brief Update Lua-side pointers to current object.
@@ -131,7 +134,7 @@ namespace Lua {
 			*/
 			[[noreturn]] void throwLuaError();
 
-			static void warnHandler(void *ud, const char *msg, int tocont); ///< Append message to buffer and/or call user warning handler
+			static void warnHandler(void* ud, const char* msg, int tocont); ///< Append message to buffer and/or call user warning handler
 		public:
 			/**
 			 * @brief Get State object from `lua_State*`.
@@ -144,7 +147,7 @@ namespace Lua {
 			 * overpass this issue, use StatePtr instead.
 			 * @param L %Lua state to be retrived
 			*/
-			static State* getFromLuaState(lua_State* L) { return **static_cast<State***>(lua_getextraspace(L)); };
+			static State* getFromLuaState(lua_State* L) { return **static_cast<State*** >(lua_getextraspace(L)); };
 
 			/**
 			 * @brief Main constructor.
@@ -266,6 +269,27 @@ namespace Lua {
 			 * @param libid ID of lib you need to load.
 			*/
 			void loadDefaultLib(DefaultLibs libid);
+			/**
+			 * @brief Remove potentially dangerous functional from `package` library
+			 *
+			 * While `require` is quite useful by itself, default setup include dangerous
+			 * functions that allow loading of untrusted Lua and C code. This function
+			 * remove such functions, while keeping it possible to supply your
+			 * own loaders and use advantages of `require`.
+			 * 
+			 * Following features are removed:
+			 * 
+			 * 1. `package.loadlib`
+			 * 2. `package.searchpath`
+			 * 3. All `package.searchers` except first one (used for `package.preload`)
+			 *
+			 * @return Have operation succeeded.
+			 * 
+			 * @warning This function assume untouched environment with just loaded `package`
+			 * library. Avoid calling this function directly and use DefaultLibsPreset::SAFE_WITH_STRIPPED_PACKAGE
+			 * instead.
+			*/
+			bool stripPackageLibrary();
 			/// @}
 
 			/// @name Warning management
@@ -361,6 +385,9 @@ namespace Lua {
 			 *
 			 * @note If `std::tuple<...>` is passed, it's unwrapped into call
 			 * to `push`.
+			 * @warning This call doesn't check for space on Lua stack
+			 * until std::tuple functional is utilized. Use `push`
+			 * to be safe.
 			 *
 			 * @param data Your variable to be pushed.
 			 * @return Number of values pushed on stack (always 1 until using tuples)
@@ -392,15 +419,14 @@ namespace Lua {
 			 *
 			 * ## Special cases:
 			 * 1. Type is `std::any`. In this case, helper function `getGeneric()` will be
-			 * called to choose type fitting value the best way.
-			 * 2. Requested index in invalid. In this case function will return
-			 * empty object immediately without even looking for type handler.
+			 * called to choose type fitting value the best way. This will always result in
+			 * `std::optional` containing value even if no value was recivied (if so, `std::any`
+			 * will simply don't hold anything).
 			 *
 			 * ## Examples
 			 * ```
 			 * auto str  = getOne<std::string>(1);          // Get string from index 1 if possible
 			 * auto any  = getOne<std::any>(1);             // Get best math for value at index 1 (special case 1)
-			 * auto none = getOne<std::stringstream>(9999); // Most likely will return empty object without error (special case 2)
 			 * ```
 			 *
 			 * @param idx Index on %Lua stack.
@@ -410,7 +436,7 @@ namespace Lua {
 			*/
 			template<typename T>
 			std::optional<T> getOne(int idx) {
-				if (lua_isnone(state, idx)) return {};
+				//if (lua_isnone(state, idx)) return {};
 
 				if constexpr(std::is_same<T, std::any>::value) {
 						return getGeneric(idx);
@@ -429,6 +455,7 @@ namespace Lua {
 			 *
 			 * This function is template-based generalisation over pushOne().
 			 * It will try to push all given arguments one-by-one (see original function docs for details).
+			 * Also, `luaL_checkstack` is called to ensure that stack is big enough.
 			 *
 			 * @param value,Fargs Values to be pushed.
 			 * @return Number of values pushed onto stack (eqaul to number of argumnets until
@@ -437,6 +464,7 @@ namespace Lua {
 			*/
 			template<typename... Targs>
 			int push(Targs... Fargs) {
+				luaL_checkstack(state, sizeof...(Targs), "failure in `push` C++ call allocation");
 				return (pushOne<Targs>(Fargs) + ...);
 				};
 
@@ -499,7 +527,7 @@ namespace Lua {
 			/// @}
 
 			/// Get underlying `lua_State*`
-			operator lua_State*() { return state; };
+			operator lua_State* () { return state; };
 		};
 
 	/**

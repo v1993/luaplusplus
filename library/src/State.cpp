@@ -33,7 +33,7 @@ namespace Lua {
 				/**
 				 * @brief Read data from stream in %Lua style.
 				**/
-				const char* luaRead(size_t *size) {
+				const char* luaRead(size_t* size) {
 					if (!stream.good()) return nullptr;
 
 					stream.read(buff, BUFSIZ);
@@ -43,7 +43,7 @@ namespace Lua {
 				/**
 				 * @brief Forward raw call to C++ object.
 				*/
-				static const char* luaReadStatic([[maybe_unused]] lua_State *L, void *ud, size_t *size) {
+				static const char* luaReadStatic([[maybe_unused]] lua_State* L, void* ud, size_t* size) {
 					return static_cast<StreamReadHelper*>(ud)->luaRead(size);
 					};
 			};
@@ -61,7 +61,7 @@ namespace Lua {
 				/**
 				 * @brief Read data from string in %Lua style.
 				**/
-				const char* luaRead(size_t *size) {
+				const char* luaRead(size_t* size) {
 					if (read) return nullptr;
 
 					read = true;
@@ -71,7 +71,7 @@ namespace Lua {
 				/**
 				 * @brief Forward raw call to C++ object.
 				*/
-				static const char* luaReadStatic([[maybe_unused]] lua_State *L, void *ud, size_t *size) {
+				static const char* luaReadStatic([[maybe_unused]] lua_State* L, void* ud, size_t* size) {
 					return static_cast<StringReadHelper*>(ud)->luaRead(size);
 					};
 			};
@@ -100,7 +100,7 @@ namespace Lua {
 			};
 		};
 
-	void State::warnHandler(void *ud, const char *msg, int tocont) {
+	void State::warnHandler(void* ud, const char* msg, int tocont) {
 		auto L = static_cast<State*>(ud);
 		L->warnBuf << msg;
 
@@ -145,7 +145,7 @@ namespace Lua {
 
 		luaStatePtr = new State*(this);
 		static_assert(sizeof(State***) <= LUA_EXTRASPACE);
-		auto ptr = static_cast<State***>(lua_getextraspace(state));
+		auto ptr = static_cast<State*** >(lua_getextraspace(state));
 		*ptr = luaStatePtr;
 		updateStatePointer();
 
@@ -161,11 +161,15 @@ namespace Lua {
 						loadDefaultLib(DefaultLibs::OS);
 						loadDefaultLib(DefaultLibs::DEBUG);
 
-					// continuing
+						[[fallthrough]];
+
 					case DefaultLibsPreset::SAFE_WITH_PACKAGE:
+						[[fallthrough]];
+					case DefaultLibsPreset::SAFE_WITH_STRIPPED_PACKAGE:
 						loadDefaultLib(DefaultLibs::PACKAGE);
 
-					// continuing
+						[[fallthrough]];
+
 					case DefaultLibsPreset::SAFE:
 						loadDefaultLib(DefaultLibs::COROUTINE);
 						loadDefaultLib(DefaultLibs::TABLE);
@@ -173,17 +177,65 @@ namespace Lua {
 						loadDefaultLib(DefaultLibs::MATH);
 						loadDefaultLib(DefaultLibs::UTF8);
 
-					// continuing
-					case DefaultLibsPreset::BASE:
-						;
+						[[fallthrough]];
 
-					// We already loaded it first
+					case DefaultLibsPreset::BASE:
+						// We already loaded it first
+						[[fallthrough]];
+
 					case DefaultLibsPreset::NONE:
-						;
 						// Nothing to load
+						;
 						}
+						
+				if (openlibs == DefaultLibsPreset::SAFE_WITH_STRIPPED_PACKAGE)
+					stripPackageLibrary();
 				}
 		};
+		
+	bool State::stripPackageLibrary() {
+		luaL_checkstack(state, 2, nullptr);
+		// Stack: xxx
+		luaL_getsubtable(state, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+		// Stack: xxx, package.loaded
+		lua_getfield(state, -1, luaLibs.at(DefaultLibs::PACKAGE).name);
+		// Stack: xxx, package.loaded, package
+		if (!lua_toboolean(state, -1)) {
+			// Package library not loaded, fail gracefully
+			pop(2);
+			// Stack: xxx
+			return false;
+		}
+		
+		// Remove filed from table on top of stack
+		auto removeField = [this](const char* name) {
+			push(nullptr);
+			lua_setfield(state, -2, name);
+		};
+		
+		// Stack: xxx, package.loaded, package
+		// Remove library functions
+		removeField("loadlib"); // Allow access to C code
+		removeField("searchpath"); // Allow scanning filesystem
+		
+		// Stack: xxx, package.loaded, package
+		lua_getfield(state, -1, "searchers");
+		
+		// Stack: xxx, package.loaded, package, package.searchers
+		if (lua_toboolean(state, -1)) {
+			// Remove all searchers but first one
+			for (auto i = luaL_len(state, -1); i >= 2; --i) {
+				// Stack: xxx, package.loaded, package, package.searchers
+				push(nullptr);
+				lua_rawseti(state, -2, i);
+			}
+		}
+		
+		// Stack: xxx, package.loaded, package, package.searchers
+		pop(3);
+		// Stack: xxx
+		return true;
+	};
 
 	State::~State() {
 		if (mainState) {
@@ -290,14 +342,14 @@ namespace Lua {
 				}
 		};
 
-	std::optional<std::any> State::getGeneric(int idx) {
+	std::any State::getGeneric(int idx) {
 		for (const auto& type : knownTypesList) {
 				if (type->isBestType(state, idx)) {
-						return std::make_optional<std::any>(type->getValue(state, idx));
+						return std::any(type->getValue(state, idx));
 						}
 				}
 
-		return std::optional<std::any>();
+		return std::any();
 		};
 
 	StatePtr::StatePtr(lua_State* L) {

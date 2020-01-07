@@ -47,8 +47,9 @@ set_target_properties(lua_static PROPERTIES LINKER_LANGUAGE CXX)
 target_compile_features(lua_static PUBLIC cxx_std_17)
 target_include_directories(lua_static PUBLIC "${LUA_LIB_INCLUDE}")
 
-# FIXME: add defenitions
-set(LUA_DEFINITIONS LUA_USE_POSIX)
+# FIXME: this is Unix setup
+target_link_libraries(lua_static dl)
+set(LUA_DEFINITIONS LUA_USE_POSIX LUA_USE_DLOPEN)
 target_compile_definitions(lua_static PUBLIC ${LUA_DEFINITIONS})
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
