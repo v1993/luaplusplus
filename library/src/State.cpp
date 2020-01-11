@@ -2,6 +2,7 @@
 #include "lua++/Error.hpp"
 #include "lua++/CppFunction.hpp"
 
+#include <array>
 #include <iostream>
 #include <fstream>
 
@@ -15,10 +16,10 @@ namespace Lua {
 		 * @brief Helper class for loading from C++ stream.
 		*/
 		class StreamReadHelper {
-			protected:
-				std::istream& stream;       ///< Source stream.
-				int n = 0;                  ///< Number of pre-read characters.
-				char buff[BUFSIZ];          ///< Internall buffer.
+			private:
+				std::istream& stream;         ///< Source stream.
+				int n = 0;                    ///< Number of pre-read characters.
+				std::array<char, BUFSIZ> buff {}; ///< Internall buffer.
 
 				/**
 				 * @brief Prepare object to usage
@@ -36,9 +37,9 @@ namespace Lua {
 				const char* luaRead(size_t* size) {
 					if (!stream.good()) return nullptr;
 
-					stream.read(buff, BUFSIZ);
+					stream.read(buff.data(), BUFSIZ);
 					*size = stream.gcount();
-					return buff;
+					return buff.data();
 					};
 				/**
 				 * @brief Forward raw call to C++ object.
@@ -52,7 +53,7 @@ namespace Lua {
 		 * @brief Helper class for loading from C++ string.
 		*/
 		class StringReadHelper {
-			protected:
+			private:
 				std::string_view str; ///< Source stream.
 				bool read = false;    ///< Was string read.
 
@@ -76,7 +77,7 @@ namespace Lua {
 					};
 			};
 
-		static const std::unordered_map<DefaultLibs, luaL_Reg> luaLibs = {
+		const std::unordered_map<DefaultLibs, luaL_Reg> luaLibs = {
 			// Base
 				{DefaultLibs::BASE,      {LUA_GNAME, luaopen_base}},
 			// Safe
@@ -93,10 +94,25 @@ namespace Lua {
 				{DefaultLibs::DEBUG,     {LUA_DBLIBNAME, luaopen_debug}}
 			};
 
-		static const std::unordered_map<LoadMode, const char*> luaLoadModes = {
+		const std::unordered_map<LoadMode, const char*> luaLoadModes = {
 				{LoadMode::TEXT,   "t" },
 				{LoadMode::BINARY, "b" },
 				{LoadMode::BOTH,   "bt"}
+			};
+
+		int luaPanic(lua_State* L) {
+			std::cerr << "Lua panic (unprotected call): " << lua_tostring(L, -1) << std::endl;
+			return 0;
+			};
+
+		void* luaAlloc([[maybe_unused]] void* ud, void* ptr, [[maybe_unused]] size_t oldsize, size_t newsize) {
+			if (newsize == 0) {
+					std::free(ptr);
+					return nullptr;
+					}
+			else {
+					return std::realloc(ptr, newsize);
+					}
 			};
 		};
 
@@ -112,8 +128,7 @@ namespace Lua {
 
 	void State::updateStatePointer() {
 		*luaStatePtr = this;
-
-		lua_setwarnf(state, warnHandler, this);
+		lua_setwarnf(mainState, warnHandler, this);
 		};
 
 	const std::shared_ptr<TypeBase>& State::getTypeHandler(const std::type_info& tinfo) const {
@@ -138,10 +153,16 @@ namespace Lua {
 				}
 		};
 
-	State::State(DefaultLibsPreset openlibs) {
-		mainState = (state = luaL_newstate());
+	State::State(DefaultLibsPreset openlibs, lua_Alloc alloc, void* ud) {
+		if (!alloc) {
+				alloc = luaAlloc;
+				}
+
+		mainState = (state = lua_newstate(alloc, ud));
 
 		if (!mainState) throw Lua::Error("Can't create state");
+
+		lua_atpanic(mainState, &luaPanic);
 
 		luaStatePtr = new State*(this);
 		static_assert(sizeof(State***) <= LUA_EXTRASPACE);
@@ -165,6 +186,7 @@ namespace Lua {
 
 					case DefaultLibsPreset::SAFE_WITH_PACKAGE:
 						[[fallthrough]];
+
 					case DefaultLibsPreset::SAFE_WITH_STRIPPED_PACKAGE:
 						loadDefaultLib(DefaultLibs::PACKAGE);
 
@@ -187,55 +209,160 @@ namespace Lua {
 						// Nothing to load
 						;
 						}
-						
+
 				if (openlibs == DefaultLibsPreset::SAFE_WITH_STRIPPED_PACKAGE)
 					stripPackageLibrary();
 				}
 		};
-		
-	bool State::stripPackageLibrary() {
+
+	bool State::loadPackageTables() {
 		luaL_checkstack(state, 2, nullptr);
 		// Stack: xxx
 		luaL_getsubtable(state, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
 		// Stack: xxx, package.loaded
 		lua_getfield(state, -1, luaLibs.at(DefaultLibs::PACKAGE).name);
+
 		// Stack: xxx, package.loaded, package
 		if (!lua_toboolean(state, -1)) {
-			// Package library not loaded, fail gracefully
-			pop(2);
-			// Stack: xxx
-			return false;
+				// Package library not loaded, fail gracefully
+				pop(2);
+				// Stack: xxx
+				return false;
+				}
+
+		return true;
 		}
-		
+
+	bool State::stripPackageLibrary() {
+		// Stack: xxx
+		if (!loadPackageTables()) return false;
+
+		// Stack: xxx, package.loaded, package
+
 		// Remove filed from table on top of stack
 		auto removeField = [this](const char* name) {
 			push(nullptr);
 			lua_setfield(state, -2, name);
-		};
-		
+			};
+
 		// Stack: xxx, package.loaded, package
 		// Remove library functions
 		removeField("loadlib"); // Allow access to C code
 		removeField("searchpath"); // Allow scanning filesystem
-		
+
 		// Stack: xxx, package.loaded, package
 		lua_getfield(state, -1, "searchers");
-		
+
 		// Stack: xxx, package.loaded, package, package.searchers
 		if (lua_toboolean(state, -1)) {
-			// Remove all searchers but first one
-			for (auto i = luaL_len(state, -1); i >= 2; --i) {
-				// Stack: xxx, package.loaded, package, package.searchers
-				push(nullptr);
-				lua_rawseti(state, -2, i);
-			}
-		}
-		
+				// Remove all searchers but first one
+				for (auto i = luaL_len(state, -1); i >= 2; --i) {
+						// Stack: xxx, package.loaded, package, package.searchers
+						push(nullptr);
+						lua_rawseti(state, -2, i);
+						}
+				}
+
 		// Stack: xxx, package.loaded, package, package.searchers
 		pop(3);
 		// Stack: xxx
 		return true;
-	};
+		};
+
+	bool State::addSearcher(SearcherFunction& loader) {
+		CppFunction LuaSide = [loader](StatePtr & ptr) -> int {
+			auto name = ptr->getOne<std::string>(2);
+			std::optional<CppFunction> func;
+			std::optional<std::string> data;
+
+			try {
+					std::tie(func, data) = loader(name.value());
+					std::optional<CppFunctionWrapper> funcWrapped;
+
+					if (func)
+						funcWrapped.emplace(*func);
+
+					return ptr->push(funcWrapped, data);
+					}
+			catch (const std::exception& e) {
+					lua_warning(**ptr, "exception in C++ searcher (typeid ", false);
+					lua_warning(**ptr, typeid(e).name(), false);
+					lua_warning(**ptr, "): ", false);
+					lua_warning(**ptr, e.what(), true);
+					return 0;
+					}
+			};
+
+
+		// Stack: xxx
+		if (!loadPackageTables()) return false;
+
+		// Stack: xxx, package.loaded, package
+		luaL_checkstack(state, 2, nullptr);
+		lua_getfield(state, -1, "searchers");
+		// Stack: xxx, package.loaded, package, package.searchers
+
+		if (!lua_toboolean(state, -1)) {
+				pop(3);
+				return false;
+				}
+
+		// Stack: xxx, package.loaded, package, package.searchers
+		pushOne(LuaSide);
+		// Stack: xxx, package.loaded, package, package.searchers, our searcher
+		lua_rawseti(state, -2, luaL_len(state, -2));
+		// Stack: xxx, package.loaded, package, package.searchers
+		pop(3);
+		return true;
+		};
+
+	bool State::addPreloaded(const std::string& name, const CppFunction& loader) {
+		// Stack: xxx
+		if (!loadPackageTables()) return false;
+
+		// Stack: xxx, package.loaded, package
+		luaL_checkstack(state, 1, nullptr);
+		lua_getfield(state, -1, "preload");
+		// Stack: xxx, package.loaded, package, package.preload
+
+		if (!lua_toboolean(state, -1)) {
+				pop(3);
+				return false;
+				}
+
+		// Stack: xxx, package.loaded, package, package.preload
+		push(name, CppFunctionWrapper(loader));
+		// Stack: xxx, package.loaded, package, package.preload, name, loader
+		lua_rawset(state, -3);
+		// Stack: xxx, package.loaded, package, package.preload
+		pop(3);
+		return true;
+		};
+
+	bool State::addPreloaded(const std::string& name, lua_CFunction loader) {
+		// Stack: xxx
+		if (!loadPackageTables()) return false;
+
+		// Stack: xxx, package.loaded, package
+		luaL_checkstack(state, 1, nullptr);
+		lua_getfield(state, -1, "preload");
+		// Stack: xxx, package.loaded, package, package.preload
+
+		if (!lua_toboolean(state, -1)) {
+				pop(3);
+				return false;
+				}
+
+		// Stack: xxx, package.loaded, package, package.preload
+		push(name);
+		luaL_checkstack(state, 1, nullptr);
+		lua_pushcfunction(state, loader);
+		// Stack: xxx, package.loaded, package, package.preload, name, loader
+		lua_rawset(state, -3);
+		// Stack: xxx, package.loaded, package, package.preload
+		pop(3);
+		return true;
+		};
 
 	State::~State() {
 		if (mainState) {

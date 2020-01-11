@@ -13,9 +13,9 @@ namespace Lua {
 	class Error: public std::logic_error {
 		public:
 			/// Usual constructor
-			Error(const std::string& what_arg): logic_error(what_arg) {};
+			explicit Error(const std::string& what_arg): logic_error(what_arg) {};
 			/// Usual constructor
-			Error(const char* what_arg): logic_error(what_arg) {};
+			explicit Error(const char* what_arg): logic_error(what_arg) {};
 		};
 
 	/**
@@ -27,9 +27,9 @@ namespace Lua {
 	class StateError: public Error {
 		public:
 			/// Usual constructor
-			StateError(const std::string& what_arg): Error(what_arg) {};
+			explicit StateError(const std::string& what_arg): Error(what_arg) {};
 			/// Usual constructor
-			StateError(const char* what_arg): Error(what_arg) {};
+			explicit StateError(const char* what_arg): Error(what_arg) {};
 		};
 
 	/**
@@ -41,9 +41,9 @@ namespace Lua {
 	class SyntaxError: public Error {
 		public:
 			/// Usual constructor
-			SyntaxError(const std::string& what_arg): Error(what_arg) {};
+			explicit SyntaxError(const std::string& what_arg): Error(what_arg) {};
 			/// Usual constructor
-			SyntaxError(const char* what_arg): Error(what_arg) {};
+			explicit SyntaxError(const char* what_arg): Error(what_arg) {};
 		};
 
 	/**

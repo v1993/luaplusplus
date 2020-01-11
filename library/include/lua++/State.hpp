@@ -15,6 +15,13 @@
 */
 
 namespace Lua {
+	class StatePtr;
+
+	/// Alias for `std::function<int(Lua::StatePtr&)>` AKA C++ version of `lua_CFunction`.
+	using CppFunction = std::function<int(StatePtr&)>;
+	/// Signature for custom searcher function
+	using SearcherFunction = std::function<std::tuple<std::optional<CppFunction>, std::optional<std::string>>(const std::string&)>;
+
 	/**
 	 * @brief Set which libs will be preloaded in Lua::State.
 	 *
@@ -91,6 +98,9 @@ namespace Lua {
 
 			template <typename> struct is_tuple: std::false_type {};
 			template <typename ...T> struct is_tuple<std::tuple<T...>>: std::true_type {};
+
+			template <typename> struct is_optional: std::false_type {};
+			template <typename T> struct is_optional<std::optional<T>>: std::true_type {};
 		protected:
 			lua_State* state = nullptr; ///< lua_State being currently managed (coroutine-specific).
 			lua_State* mainState = nullptr; ///< main lua_State.
@@ -135,6 +145,8 @@ namespace Lua {
 			[[noreturn]] void throwLuaError();
 
 			static void warnHandler(void* ud, const char* msg, int tocont); ///< Append message to buffer and/or call user warning handler
+
+			bool loadPackageTables(); ///< Push `package.loaded`, `package` onto stack or return false
 		public:
 			/**
 			 * @brief Get State object from `lua_State*`.
@@ -144,7 +156,7 @@ namespace Lua {
 			 * (called internally in constructors).
 			 * @warning This function may lead to segfault if used with state not managed by State class.
 			 * @warning Resulting State will work with main thread even if called for coroutine state. To
-			 * overpass this issue, use StatePtr instead.
+			 * bypass this issue, use StatePtr instead.
 			 * @param L %Lua state to be retrived
 			*/
 			static State* getFromLuaState(lua_State* L) { return **static_cast<State*** >(lua_getextraspace(L)); };
@@ -153,16 +165,19 @@ namespace Lua {
 			 * @brief Main constructor.
 			 *
 			 * @param openlibs Check out DefaultLibsPreset description to know what different values do.
+			 * @param alloc Custom memory allocator (useful for limiting memory usage). Read %Lua docs for details on it.
+			 * @param ud User data for custom memory allocator.
 			*/
-			State(DefaultLibsPreset openlibs = DefaultLibsPreset::SAFE_WITH_PACKAGE);
+			State(DefaultLibsPreset openlibs = DefaultLibsPreset::SAFE_WITH_PACKAGE, lua_Alloc alloc = nullptr, void* ud = nullptr);
 			State(const State&) = delete; ///< Explicitly deleted to prevent copy.
+			State& operator=(State&) = delete; ///< Explicitly deleted to prevent copy.
 			/// Move constructor.
-			State(State&& old):
-				state(std::move(old.state)),
-				mainState(std::move(old.mainState)),
+			State(State&& old) noexcept:
+				state(old.state),
+				mainState(old.mainState),
 				knownTypes(std::move(old.knownTypes)),
 				knownTypesList(std::move(old.knownTypesList)),
-				luaStatePtr(std::move(old.luaStatePtr)),
+				luaStatePtr(old.luaStatePtr),
 				warnBuf(std::move(old.warnBuf)),
 				warnFunc(std::move(old.warnFunc)) {
 				// To avoid double-free and fail on misuse
@@ -170,6 +185,7 @@ namespace Lua {
 				old.mainState = nullptr;
 				updateStatePointer();
 				};
+			State& operator=(State&&) = delete; ///< I see no use for it (and have troubles understanding how to implement too).
 			virtual ~State(); ///< Destructor (declared `virtual`) to allow inheritance.
 
 			/// @name Most common Lua functions
@@ -269,6 +285,10 @@ namespace Lua {
 			 * @param libid ID of lib you need to load.
 			*/
 			void loadDefaultLib(DefaultLibs libid);
+			/// @}
+
+			/// @name Package library control
+			/// @{
 			/**
 			 * @brief Remove potentially dangerous functional from `package` library
 			 *
@@ -276,20 +296,60 @@ namespace Lua {
 			 * functions that allow loading of untrusted Lua and C code. This function
 			 * remove such functions, while keeping it possible to supply your
 			 * own loaders and use advantages of `require`.
-			 * 
+			 *
 			 * Following features are removed:
-			 * 
-			 * 1. `package.loadlib`
-			 * 2. `package.searchpath`
+			 *
+			 * 1. `package.loadlib` (capable of loading C code)
+			 * 2. `package.searchpath` (capable of scanning filesystem)
 			 * 3. All `package.searchers` except first one (used for `package.preload`)
 			 *
 			 * @return Have operation succeeded.
-			 * 
+			 *
 			 * @warning This function assume untouched environment with just loaded `package`
 			 * library. Avoid calling this function directly and use DefaultLibsPreset::SAFE_WITH_STRIPPED_PACKAGE
 			 * instead.
 			*/
 			bool stripPackageLibrary();
+
+			/**
+			 * @brief Add custom searcher function
+			 *
+			 * @note This function may be a serious overkill for you, as
+			 * addPreloaded can serve most common cases.
+			 *
+			 * Appends function to `package.searchers`. Note that it will
+			 * have lower priority than other existing loaders, so you might
+			 * want to strip package library first.
+			 *
+			 * Function must take one argument (string passed to require) and return the following
+			 * tuple, depending on outcome:
+			 *
+			 * 1. (func: not set, data: not set) No loader found, no comments on failure
+			 * 2. (func: not set, data: set) No loader found, data is string describing failure reason
+			 * 3. (func: set, data: not set) Loader found, no data for loader function
+			 * 4. (func: set, data: set) Loader found, data for loader function passed
+			 *
+			 * Data is restricted to strings only due to technical limitations.
+			 *
+			 * @return Was operation successful.
+			*/
+			bool addSearcher(SearcherFunction& loader);
+
+			/**
+			 * @brief Easy way to add custom loader statically linked to program.
+			 *
+			 * Adds providen function into `package.preload` table under given key.
+			 * This makes an extremely convinient way of adding your own modules,
+			 * either created by you or statically linked to your program, hence two
+			 * overloads: one for C++ and one for pure C.
+			 *
+			 * @param name Key to be used as module name.
+			 * @param loader Loader function itself.
+			 *
+			 * @return Was operation successful.
+			*/
+			bool addPreloaded(const std::string& name, const CppFunction& loader);
+			bool addPreloaded(const std::string& name, lua_CFunction loader);
 			/// @}
 
 			/// @name Warning management
@@ -385,6 +445,8 @@ namespace Lua {
 			 *
 			 * @note If `std::tuple<...>` is passed, it's unwrapped into call
 			 * to `push`.
+			 * @note If `std::option<...>` is passed, either contained value or `nil`
+			 * will be pushed.
 			 * @warning This call doesn't check for space on Lua stack
 			 * until std::tuple functional is utilized. Use `push`
 			 * to be safe.
@@ -402,6 +464,14 @@ namespace Lua {
 							return push(args...);
 							};
 						return std::apply(call, data);
+						}
+				else if constexpr(is_optional<T>::value) {
+						if (data) {
+								return pushOne(*data);
+								}
+						else {
+								return pushOne(nullptr);
+								}
 						}
 				else {
 						using decayed = std::decay_t<const T>;
@@ -539,8 +609,8 @@ namespace Lua {
 	 * updated. Original lua_State will be restored on destruction, so
 	 * you don't have to worry about exceptions/return.
 	*/
-	class StatePtr {
-		protected:
+	class StatePtr final {
+		private:
 			State* ptr = nullptr; ///< Pointer to State used for current lua_State
 			lua_State* oldState = nullptr; ///< lua_State that was managed before this call (`nullptr` if not changed)
 
@@ -548,7 +618,10 @@ namespace Lua {
 			StatePtr() = delete;
 			StatePtr(lua_State* L); ///< Construct object and update lua_State in recivied State if required
 			StatePtr(State&); ///< Construct object from State to eleminate extra checks (doesn't update pointer)
+			StatePtr& operator=(StatePtr&) = delete;
+			StatePtr& operator=(StatePtr&&) = delete;
 			StatePtr(const StatePtr&) = delete;
+			StatePtr(StatePtr&&) = delete;
 			virtual ~StatePtr(); ///< Destructor
 
 			/// Access State object as normal

@@ -121,7 +121,7 @@ namespace Lua {
 						break;
 
 					case cppTypeCheckResult::MISMATCH:
-						luaL_error(L, "Trying to wrong object type using %s", tname().c_str());
+						luaL_error(L, "Trying to call on wrong object type (%s expected)", tname().c_str());
 						break;
 
 					case cppTypeCheckResult::OK:

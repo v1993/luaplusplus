@@ -52,11 +52,11 @@ namespace Lua {
 		return typeid(const char*);
 		};
 
-	bool TypeCString::checkType(lua_State* L, int idx) const noexcept {
+	bool TypeCString::checkType(lua_State*, int) const noexcept {
 		return false;
 		};
 
-	std::any TypeCString::getValue(lua_State* L, int idx) const {
+	std::any TypeCString::getValue(lua_State*, int) const {
 		return std::any();
 		};
 
@@ -143,11 +143,11 @@ namespace Lua {
 		return lua_isnil(L, idx);
 		};
 
-	std::any TypeNull::getValue(lua_State* L, int idx) const {
+	std::any TypeNull::getValue(lua_State*, int) const {
 		return nullptr;
 		};
 
-	void TypeNull::pushValue(lua_State* L, const std::any& str_any) const {
+	void TypeNull::pushValue(lua_State* L, const std::any&) const {
 		lua_pushnil(L);
 		};
 

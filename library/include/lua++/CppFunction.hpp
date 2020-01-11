@@ -3,9 +3,6 @@
 #include "lua++/State.hpp"
 
 namespace Lua {
-	/// Alias for `std::function<int(Lua::StatePtr&)>` AKA C++ version of `lua_CFunction`.
-	using CppFunction = std::function<int(StatePtr&)>;
-
 	/**
 	 * @brief No-op wrapper around CppFunction aka `std::function<int(Lua::StatePtr&)>`.
 	 *
@@ -26,11 +23,11 @@ namespace Lua {
 		CppFunction func; ///< Actual function object
 		/// Wrapper around real constructor
 		template<typename... Targs>
-		CppFunctionWrapper(Targs... args): func(args...) {};
+		CppFunctionWrapper(Targs... args): func(std::move(args)...) {};
 		/// Cast operator for easier usage in some cases.
-		operator CppFunction() { return func; };
+		explicit operator CppFunction() { return func; };
 		/// Cast (reference) operator for easier usage in some cases.
-		operator CppFunction& () { return func; };
+		explicit operator CppFunction& () { return func; };
 		};
 
 	/// Alias for `std::function<int(T*, Lua::StatePtr&)>`.
@@ -39,7 +36,7 @@ namespace Lua {
 
 	/// Utility functions for internal usage
 	namespace CppHelpers {
-		/// Cast arguments too `bool` and apply `&&` to result.
+		/// Cast arguments to `bool` and apply `&&` to result.
 		constexpr auto CheckArgs = [](const auto& ... item) -> bool {
 			return (static_cast<bool>(item) && ...);
 			};
@@ -57,6 +54,31 @@ namespace Lua {
 		*/
 		constexpr auto CheckTuple = [](const auto& tuple) -> bool {
 			return std::apply(CheckArgs, tuple);
+			};
+
+		/// Cast arguments to `bool` and pack result into array
+		constexpr auto BoolizeArgs = [](const auto& ... item) -> std::array<bool, sizeof...(item)> {
+			return {static_cast<bool>(item)...};
+			};
+		/// Apply `BoolizeArgs` to tuple members.
+		constexpr auto BoolizeTuple = [](const auto& tuple) {
+			return std::apply(BoolizeArgs, tuple);
+			};
+
+		/// C++ version of bad argument error
+		constexpr auto ReportLuaArgumentError = [](lua_State* L, const auto& args) {
+			// Find first bad value
+			auto argsAsBool = CppHelpers::BoolizeTuple(args);
+			int firstBad = 1;
+
+			for (auto& elem : argsAsBool) {
+					if (!elem) break;
+
+					++firstBad;
+					};
+
+			// Report error
+			return luaL_argerror(L, firstBad, "during C++ function call");
 			};
 		// Note: for type deduction only
 		/// Deduce class from pointer to member function (can be combined with `std::declval` for arguments).
@@ -107,7 +129,7 @@ namespace Lua {
 							}
 					}
 
-			return luaL_error(**Lp, "Wrong arguments");
+			return CppHelpers::ReportLuaArgumentError(**Lp, args);
 			};
 		};
 
@@ -133,9 +155,10 @@ namespace Lua {
 							}
 					}
 
-			return luaL_error(**Lp, "Wrong arguments");
+			// Handle error
+			return CppHelpers::ReportLuaArgumentError(**Lp, args);
 			};
-		};
+		}
 
 	/**
 	 * @brief Bind C++ CppMethod-compiant method to wrapper type.
@@ -226,11 +249,11 @@ namespace Lua {
 			static int gc(lua_State*);
 		public:
 			/// @copydoc TypeBase::init
-			virtual void init(Lua::State&) const override;
-			virtual const std::type_info& getType() const noexcept override;
-			virtual bool checkType(lua_State*, int) const noexcept override;
-			virtual std::any getValue(lua_State*, int) const override;
-			virtual void pushValue(lua_State*, const std::any&) const override;
+			void init(Lua::State&) const override;
+			[[nodiscard]] const std::type_info& getType() const noexcept override;
+			bool checkType(lua_State*, int) const noexcept override;
+			std::any getValue(lua_State*, int) const override;
+			void pushValue(lua_State*, const std::any&) const override;
 		};
 
 	/**
@@ -247,11 +270,11 @@ namespace Lua {
 			static int luaCreate(Lua::StatePtr&);
 		public:
 			/// @copydoc TypeBase::init
-			virtual void init(Lua::State&) const override;
-			virtual const std::type_info& getType() const noexcept override;
-			virtual bool checkType(lua_State*, int) const noexcept override;
-			virtual std::any getValue(lua_State*, int) const override;
-			virtual void pushValue(lua_State*, const std::any&) const override;
+			void init(Lua::State&) const override;
+			[[nodiscard]] const std::type_info& getType() const noexcept override;
+			bool checkType(lua_State*, int) const noexcept override;
+			std::any getValue(lua_State*, int) const override;
+			void pushValue(lua_State*, const std::any&) const override;
 		};
 	};
 // kate: indent-mode cstyle; indent-width 4; replace-tabs off; tab-width 4; 

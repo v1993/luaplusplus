@@ -50,7 +50,7 @@ target_include_directories(lua_static PUBLIC "${LUA_LIB_INCLUDE}")
 # FIXME: this is Unix setup
 target_link_libraries(lua_static dl)
 set(LUA_DEFINITIONS LUA_USE_POSIX LUA_USE_DLOPEN)
-target_compile_definitions(lua_static PUBLIC ${LUA_DEFINITIONS})
+target_compile_definitions(lua_static PUBLIC ${LUA_DEFINITIONS} "$<$<CONFIG:Debug>:LUA_USE_APICHECK>")
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 	message(STATUS "Clang detected, passing -xc++ to prevent warnings")

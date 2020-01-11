@@ -46,7 +46,7 @@ namespace Lua {
 			 * This function is called once when registering type to State.
 			 * lua++ assume that result never changes.
 			*/
-			virtual const std::type_info& getType() const noexcept = 0;
+			[[nodiscard]] virtual const std::type_info& getType() const noexcept = 0;
 			/**
 			 * @brief Can value at given index on %Lua stack be represented as
 			 * C++ type for this handler.
@@ -86,7 +86,10 @@ namespace Lua {
 			*/
 			virtual void pushValue(lua_State* L, const std::any& obj) const = 0;
 
-			virtual ~TypeBase() {};
+			TypeBase() = default;
+			virtual ~TypeBase() = default;
+			TypeBase(const TypeBase&) = delete;
+			TypeBase& operator=(const TypeBase&) = delete;
 		};
 
 	/**
@@ -95,10 +98,10 @@ namespace Lua {
 	*/
 	class TypeBool: public TypeBase {
 		public:
-			virtual const std::type_info& getType() const noexcept;
-			virtual bool checkType(lua_State*, int) const noexcept;
-			virtual std::any getValue(lua_State*, int) const;
-			virtual void pushValue(lua_State*, const std::any&) const;
+			[[nodiscard]] const std::type_info& getType() const noexcept override;
+			bool checkType(lua_State*, int) const noexcept override;
+			std::any getValue(lua_State*, int) const override;
+			void pushValue(lua_State*, const std::any&) const override;
 		};
 
 	/**
@@ -107,11 +110,11 @@ namespace Lua {
 	*/
 	class TypeString: public TypeBase {
 		public:
-			virtual const std::type_info& getType() const noexcept;
-			virtual bool checkType(lua_State*, int) const noexcept;
-			virtual bool isBestType(lua_State* L, int idx) const noexcept;
-			virtual std::any getValue(lua_State*, int) const;
-			virtual void pushValue(lua_State*, const std::any&) const;
+			[[nodiscard]] const std::type_info& getType() const noexcept override;
+			bool checkType(lua_State*, int) const noexcept override;
+			bool isBestType(lua_State* L, int idx) const noexcept override;
+			std::any getValue(lua_State*, int) const override;
+			void pushValue(lua_State*, const std::any&) const override;
 		};
 
 	/**
@@ -120,10 +123,10 @@ namespace Lua {
 	*/
 	class TypeCString: public TypeBase {
 		public:
-			virtual const std::type_info& getType() const noexcept;
-			virtual bool checkType(lua_State*, int) const noexcept;
-			virtual std::any getValue(lua_State*, int) const;
-			virtual void pushValue(lua_State*, const std::any&) const;
+			[[nodiscard]] const std::type_info& getType() const noexcept override;
+			bool checkType(lua_State*, int) const noexcept override;
+			std::any getValue(lua_State*, int) const override;
+			void pushValue(lua_State*, const std::any&) const override;
 		};
 
 	/**
@@ -131,11 +134,11 @@ namespace Lua {
 	*/
 	class TypeNumber: public TypeBase {
 		public:
-			virtual const std::type_info& getType() const noexcept;
-			virtual bool checkType(lua_State*, int) const noexcept;
-			virtual bool isBestType(lua_State* L, int idx) const noexcept;
-			virtual std::any getValue(lua_State*, int) const;
-			virtual void pushValue(lua_State*, const std::any&) const;
+			[[nodiscard]] const std::type_info& getType() const noexcept override;
+			bool checkType(lua_State*, int) const noexcept override;
+			bool isBestType(lua_State* L, int idx) const noexcept override;
+			std::any getValue(lua_State*, int) const override;
+			void pushValue(lua_State*, const std::any&) const override;
 		};
 
 	/**
@@ -143,10 +146,10 @@ namespace Lua {
 	*/
 	class TypeNull: public TypeBase {
 		public:
-			virtual const std::type_info& getType() const noexcept;
-			virtual bool checkType(lua_State*, int) const noexcept;
-			virtual std::any getValue(lua_State*, int) const;
-			virtual void pushValue(lua_State*, const std::any&) const;
+			[[nodiscard]] const std::type_info& getType() const noexcept override;
+			bool checkType(lua_State*, int) const noexcept override;
+			std::any getValue(lua_State*, int) const override;
+			void pushValue(lua_State*, const std::any&) const override;
 		};
 
 	/**
@@ -154,10 +157,10 @@ namespace Lua {
 	*/
 	class TypeLightUserdata: public TypeBase {
 		public:
-			virtual const std::type_info& getType() const noexcept;
-			virtual bool checkType(lua_State*, int) const noexcept;
-			virtual std::any getValue(lua_State*, int) const;
-			virtual void pushValue(lua_State*, const std::any&) const;
+			[[nodiscard]] const std::type_info& getType() const noexcept override;
+			bool checkType(lua_State*, int) const noexcept override;
+			std::any getValue(lua_State*, int) const override;
+			void pushValue(lua_State*, const std::any&) const override;
 		};
 	};
 // kate: indent-mode cstyle; indent-width 4; replace-tabs off; tab-width 4; 

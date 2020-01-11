@@ -67,7 +67,7 @@ int echoFunc(Lua::StatePtr& Lp) {
 	return lua_gettop(**Lp) - 1;
 	};
 
-void doTests() {
+void testBasic() {
 	Lua::State state(Lua::DefaultLibsPreset::SAFE_WITH_PACKAGE);
 	//Lua::State stateA = state;
 	std::cout << "Hi" << std::endl;
@@ -163,6 +163,21 @@ void doTests() {
 		std::cout << *res1 << (lua_Integer)*res2 << std::any_cast<std::string>(*res3) << *res4 << std::endl;
 		auto rescnt = L.pcall(4);
 		std::cout << "We got " << rescnt << " results (from 0)" << std::endl;
+		}
+
+	// Stack is empty
+	// Testing optionals
+
+		{
+		auto a = std::make_optional<std::string>("Before nothing");
+		std::optional<std::string> b;
+		auto c = std::make_optional<std::string>("After nothing");
+
+		lua_getglobal(L, "print");
+		L.push(a, b, c);
+		auto [a1, b1, c1] = L.get<std::string, std::string, std::string>(2, true);
+		std::cout << a1.value_or("nothing") << " " << b1.value_or("nothing") << " " << c1.value_or("nothing") << std::endl;
+		L.pcall(3);
 		}
 
 	// Stack is empty
@@ -289,6 +304,7 @@ end
 print(pcall(ovar, "some args")) -- NOTE: Does fail because CppFunctionNative is used.
 
 print(testObj:MethodWrapped(10, "Hey! Listen!"))
+print(pcall(testObj.MethodWrapped))
 testObj:MethodWrappedVoid()
 print(testObj:MethodManyRes())
 print("Doing test:", echoFunc(1,2,3,4))
@@ -300,11 +316,60 @@ print("Doing test:", echoFunc(1,2,3,4))
 		}
 	}
 
+int cloader(lua_State* L) {
+	lua_pushstring(L, "C loader signature loader working");
+	return 1;
+	};
+
+void testPackage() {
+	auto cpploader = [](Lua::StatePtr & Lp) -> int {
+		Lp->push("C++ signature loader working");
+		return 1;
+		};
+		{
+		std::cout << "Testing loading addPreload" << std::endl;
+		Lua::State L(Lua::DefaultLibsPreset::SAFE_WITH_STRIPPED_PACKAGE);
+		L.addPreloaded("cloader", cloader);
+		L.addPreloaded("cpploader", cpploader);
+		L.load(
+			R"LUA(
+print(package.preload.cloader)
+print(pcall(require, 'cloader'))
+print(package.preload.cpploader)
+print(pcall(require, 'cpploader'))
+		  )LUA"
+		);
+		L.pcall(0);
+		}
+		{
+		Lua::SearcherFunction searcher = [&cpploader](const std::string & name) -> std::tuple<std::optional<Lua::CppFunction>, std::optional<std::string>> {
+			if (name == "cpploader") {
+					return {cpploader, "Custom loader data"};
+					}
+
+			return {std::nullopt, std::nullopt};
+			};
+		Lua::State L(Lua::DefaultLibsPreset::SAFE_WITH_STRIPPED_PACKAGE);
+		L.addSearcher(searcher);
+		L.load(
+			R"LUA(
+print(pcall(require, 'cpploader'))
+		  )LUA"
+		);
+		L.pcall(0);
+		}
+	};
+
 void myStuff() {
 	Lua::State state(Lua::DefaultLibsPreset::SAFE_WITH_STRIPPED_PACKAGE);
 	state.load("print(require 'cmath');");
 	state.pcall(0, 0);
 	}
+
+void doTests() {
+	testBasic();
+	testPackage();
+	};
 
 int main(int argc, const char* argv[]) {
 	/*

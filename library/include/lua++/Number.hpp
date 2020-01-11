@@ -20,7 +20,7 @@ namespace Lua {
 	 * real representations.
 	*/
 	class Number {
-		protected:
+		private:
 			/**
 			 * @brief Internal holder of value (either `lua_Number` or `lua_Integer`).
 			 */
@@ -31,35 +31,25 @@ namespace Lua {
 			 * @brief Constructor from lua_Number (for non-integers).
 			 * @param num Non-integer number to be stored.
 			 */
-			Number(lua_Number  num): holder(num) {};
+			explicit Number(lua_Number  num): holder(num) {};
 			/**
 			 * @brief Constructor from lua_Integer (for integers).
 			 * @param num Integer number to be stored.
 			 */
-			Number(lua_Integer num): holder(num) {};
-			/**
-			 * @brief Copy constructor.
-			 * @param old Value being copied.
-			 */
-			Number(const Number& old): holder(old.holder) {};
-			/**
-			 * @brief Move constructor.
-			 * @param old Value being moved.
-			 */
-			Number(Number&& old): holder(std::move(old.holder)) {};
+			explicit Number(lua_Integer num): holder(num) {};
 
 			/**
 			 * @brief Check is actual value an integer.
 			 * @return Is contained value an `lua_Integer`.
 			 */
-			bool isInteger() const noexcept { return std::holds_alternative<lua_Integer>(holder); };
+			[[nodiscard]] bool isInteger() const noexcept { return std::holds_alternative<lua_Integer>(holder); };
 
 			/**
 			 * @brief Get internal holder.
 			 * @warning This function is not supposed to be used widely.
 			 * @return `std::variant<lua_Number, lua_Integer>`, used internally.
 			 */
-			std::variant<lua_Number, lua_Integer> getInternal() const noexcept { return holder; };
+			[[nodiscard]] std::variant<lua_Number, lua_Integer> getInternal() const noexcept { return holder; };
 
 			/**
 			 * @brief Cast operator to `lua_Number`.
