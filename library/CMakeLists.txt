@@ -41,7 +41,7 @@ set(LUA_LIB_SRCS
 set(LUA_LIB_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/lua")
 SET_SOURCE_FILES_PROPERTIES(${LUA_LIB_SRCS} PROPERTIES LANGUAGE CXX)
 
-add_library(lua_static STATIC ${LUA_LIB_SRCS})
+add_library(lua_static STATIC EXCLUDE_FROM_ALL ${LUA_LIB_SRCS})
 set_target_properties(lua_static PROPERTIES LANGUAGE CXX)
 set_target_properties(lua_static PROPERTIES LINKER_LANGUAGE CXX)
 target_compile_features(lua_static PUBLIC cxx_std_17)
@@ -56,6 +56,19 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 	message(STATUS "Clang detected, passing -xc++ to prevent warnings")
 	target_compile_options(lua_static PRIVATE "-xc++")
 endif()
+
+# Configure Lua library to be built with static Lua
+
+function(lua_setuplibrary LIB_NAME)
+	set_target_properties("${LIB_NAME}" PROPERTIES LANGUAGE CXX)
+	set_target_properties("${LIB_NAME}" PROPERTIES LINKER_LANGUAGE CXX)
+	target_compile_features("${LIB_NAME}" PUBLIC cxx_std_17)
+	target_link_libraries("${LIB_NAME}" lua_static)
+
+	if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+		target_compile_options("${LIB_NAME}" PRIVATE "-xc++")
+	endif()
+endfunction()
 
 # lua++
 

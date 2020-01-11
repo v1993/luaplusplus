@@ -315,7 +315,8 @@ namespace Lua {
 			 * @brief Add custom searcher function
 			 *
 			 * @note This function may be a serious overkill for you, as
-			 * addPreloaded can serve most common cases.
+			 * addPreloaded can serve most common cases, unless you're
+			 * loading Lua files.
 			 *
 			 * Appends function to `package.searchers`. Note that it will
 			 * have lower priority than other existing loaders, so you might

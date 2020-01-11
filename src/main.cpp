@@ -347,17 +347,32 @@ print(pcall(require, 'cpploader'))
 					return {cpploader, "Custom loader data"};
 					}
 
-			return {std::nullopt, std::nullopt};
+			return {std::nullopt, "Custom searcher lookup failed"};
 			};
 		Lua::State L(Lua::DefaultLibsPreset::SAFE_WITH_STRIPPED_PACKAGE);
 		L.addSearcher(searcher);
 		L.load(
 			R"LUA(
 print(pcall(require, 'cpploader'))
+print(pcall(require, 'i_do_not_exsist'))
 		  )LUA"
 		);
 		L.pcall(0);
 		}
+	};
+
+int luaopen_lpeg(lua_State* L);
+
+void testLpeg() {
+	Lua::State L(Lua::DefaultLibsPreset::SAFE_WITH_STRIPPED_PACKAGE);
+	L.addPreloaded("lpeg", luaopen_lpeg);
+	L.load(
+		R"LUA(
+print(pcall(require, 'lpeg'))
+-- Use lpeg as usual here, I don't know it
+		  )LUA"
+	);
+	L.pcall(0);
 	};
 
 void myStuff() {
@@ -369,6 +384,7 @@ void myStuff() {
 void doTests() {
 	testBasic();
 	testPackage();
+	testLpeg();
 	};
 
 int main(int argc, const char* argv[]) {

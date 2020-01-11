@@ -256,6 +256,7 @@ namespace Lua {
 		// Stack: xxx, package.loaded, package, package.searchers
 		if (lua_toboolean(state, -1)) {
 				// Remove all searchers but first one
+				// To keep it an array, start from the end
 				for (auto i = luaL_len(state, -1); i >= 2; --i) {
 						// Stack: xxx, package.loaded, package, package.searchers
 						push(nullptr);
@@ -277,12 +278,13 @@ namespace Lua {
 
 			try {
 					std::tie(func, data) = loader(name.value());
-					std::optional<CppFunctionWrapper> funcWrapped;
 
-					if (func)
-						funcWrapped.emplace(*func);
-
-					return ptr->push(funcWrapped, data);
+					if (func) {
+							return ptr->push(std::make_optional<CppFunctionWrapper>(*func), data);
+							}
+					else {
+							return ptr->push(data);
+							}
 					}
 			catch (const std::exception& e) {
 					lua_warning(**ptr, "exception in C++ searcher (typeid ", false);
@@ -310,7 +312,7 @@ namespace Lua {
 		// Stack: xxx, package.loaded, package, package.searchers
 		pushOne(LuaSide);
 		// Stack: xxx, package.loaded, package, package.searchers, our searcher
-		lua_rawseti(state, -2, luaL_len(state, -2));
+		lua_rawseti(state, -2, luaL_len(state, -2)+1);
 		// Stack: xxx, package.loaded, package, package.searchers
 		pop(3);
 		return true;
